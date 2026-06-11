@@ -69,13 +69,14 @@ da-intel-agentic/
 - Git installed (for committing and pushing changes).
 
 ### Environment Configuration
-The pipeline loads credentials from your environment variables. Under Windows, it will fallback to checking your User Environment registry (`HKEY_CURRENT_USER\Environment`). 
+The pipeline loads credentials and configuration options from environment variables. Under Windows, it will fallback to checking your User Environment registry (`HKEY_CURRENT_USER\Environment`). 
 
 Ensure the following variables are configured:
 - `GEMINI_API_KEY`: Your Google Gemini API key.
 - `SMTP_USER`: Your Gmail address.
 - `SMTP_PASS`: Your Gmail App Password (generated via Google Account settings).
 - `RECIPIENT_EMAIL`: The destination address for the briefing (defaults to `SMTP_USER` if not set).
+- `HUGO_DIR` (Optional): Path to your local Hugo site repository directory. If not set, defaults to a sibling folder named `sunilkandola-hugo`.
 
 ---
 

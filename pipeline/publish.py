@@ -254,7 +254,11 @@ def main():
     today_str = datetime.date.today().isoformat()
     
     # 1. Hugo Site Publishing
-    hugo_dir = os.path.join(os.path.dirname(WORKSPACE_ROOT), "sunilkandola-hugo")
+    hugo_dir_env = get_env_var("HUGO_DIR")
+    if hugo_dir_env:
+        hugo_dir = os.path.abspath(hugo_dir_env)
+    else:
+        hugo_dir = os.path.join(os.path.dirname(WORKSPACE_ROOT), "sunilkandola-hugo")
     hugo_content_dir = os.path.join(hugo_dir, "content", "intel")
     brief_filename = f"weekly_brief_{today_str}.md"
     brief_filepath = os.path.join(hugo_content_dir, brief_filename)
