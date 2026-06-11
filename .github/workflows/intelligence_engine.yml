@@ -53,6 +53,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 google-genai markdown
 
+      - name: Check repository secrets
+        run: |
+          echo "Checking if secrets are populated (true/false):"
+          echo "GEMINI_API_KEY is set: ${{ secrets.GEMINI_API_KEY != '' }}"
+          echo "SMTP_USER is set: ${{ secrets.SMTP_USER != '' }}"
+          echo "SMTP_PASS is set: ${{ secrets.SMTP_PASS != '' }}"
+          echo "RECIPIENT_EMAIL is set: ${{ secrets.RECIPIENT_EMAIL != '' }}"
+          echo "HUGO_REPO_PAT is set: ${{ secrets.HUGO_REPO_PAT != '' }}"
+
       - name: Run intelligence engine pipeline
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -68,3 +77,10 @@ jobs:
           git add --force system_state.json
           git commit -m "chore: update system state [skip ci]" || echo "No changes to state"
           git push origin HEAD:main
+
+      - name: Commit and push error logs on failure
+        if: failure()
+        run: |
+          git add --force error_log.txt || echo "No error log to add"
+          git commit -m "chore: upload error logs on failure [skip ci]" || echo "No changes to logs"
+          git push origin HEAD:main || echo "Failed to push error logs"
