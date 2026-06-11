@@ -1,0 +1,17 @@
+# Exclude dynamic state and logs
+/system_state.json
+/error_log.txt
+
+# Exclude local outputs
+/shared_artifacts/raw_enriched_feed.json
+/shared_artifacts/strategic_analysis.json
+/pipeline/output_briefing.md
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables
+.env
