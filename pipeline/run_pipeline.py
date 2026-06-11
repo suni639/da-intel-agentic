@@ -148,6 +148,9 @@ Strategic Analysis JSON:
 def main():
     print("Pipeline orchestration run started...")
     
+    # Ensure directories exist
+    os.makedirs(os.path.join(WORKSPACE_ROOT, "shared_artifacts"), exist_ok=True)
+    
     gemini_key = get_env_var("GEMINI_API_KEY")
     if not gemini_key:
         log_error("GEMINI_API_KEY environment variable is not set. Pipeline aborted.")
