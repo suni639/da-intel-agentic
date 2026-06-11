@@ -21,7 +21,7 @@ graph TD
 
 1. **The Research Scout (`scout`)**
    - **Trigger**: Instantiated via scheduler or manually.
-   - **Action**: Invokes `pipeline/ingestion.py` to scrape high-signal RSS feeds (CoinDesk, The Block, and the Bank for International Settlements).
+   - **Action**: Invokes `pipeline/ingestion.py` to scrape high-signal RSS feeds (CoinDesk, The Block, the Bank for International Settlements, Ledger Insights, the European Central Bank, and the Bank of England).
    - **Enrichment**: Inspects articles for institutional programs (e.g. Project Agorá, mBridge, Regulated Liability Networks, Project Cedar) and gathers primary-source specification details via web search.
    - **Output**: Writes combined raw/enriched feed items to `shared_artifacts/raw_enriched_feed.json`.
 
