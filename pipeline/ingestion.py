@@ -3,6 +3,7 @@ import sys
 import json
 import requests
 import re
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import warnings
 from bs4 import XMLParsedAsHTMLWarning
@@ -47,6 +48,10 @@ def parse_rss_feed(source_name, feed_url):
             if not link and link_tag and 'href' in link_tag.attrs:
                 link = link_tag['href']
                 
+            if link:
+                # Resolve relative paths (e.g. /press/p260520.htm) to absolute URLs
+                link = urljoin(feed_url, link)
+            
             desc = item.find('description').get_text(strip=True) if item.find('description') else ""
             
             if link and link not in state.get("processed_urls", {}):

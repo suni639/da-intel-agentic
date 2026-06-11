@@ -41,5 +41,21 @@ class TestPipelineUtilities(unittest.TestCase):
         self.assertIn("CORE PILLAR DEVELOPMENTS", html_output)
         self.assertIn("Test point.", html_output)
 
+    def test_link_validation_and_normalization(self):
+        from run_pipeline import validate_and_normalize_links
+        
+        # Test absolute links (should be untouched)
+        content_abs = "Check [Visa](https://www.google.com/search?q=Visa) or [BIS](https://www.bis.org/press/p260520.htm)."
+        self.assertEqual(validate_and_normalize_links(content_abs), content_abs)
+        
+        # Test page fragment links (should be untouched)
+        content_fragment = "See [Section 2](#section-2)."
+        self.assertEqual(validate_and_normalize_links(content_fragment), content_fragment)
+        
+        # Test relative/broken links (should be normalized to Google Search fallback)
+        content_rel = "Read [Project Pontes](atlantic_council_cbdc_tracker_2026-22) and [Drex](atlantic_council_cbdc_tracker_2026-22)."
+        expected_normalized = "Read [Project Pontes](https://www.google.com/search?q=Project+Pontes) and [Drex](https://www.google.com/search?q=Drex)."
+        self.assertEqual(validate_and_normalize_links(content_rel), expected_normalized)
+
 if __name__ == '__main__':
     unittest.main()

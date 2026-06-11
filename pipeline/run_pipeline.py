@@ -84,25 +84,25 @@ Return the result STRICTLY as a JSON object matching this structure (no markdown
   "Banking Infrastructure & Commercial Rails": {{
     "synthesis": "...",
     "developments": [
-      {{ "title": "...", "source": "...", "details": "..." }}
+      {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
     ]
   }},
   "Institutional Asset Management & RWAs": {{
     "synthesis": "...",
     "developments": [
-      {{ "title": "...", "source": "...", "details": "..." }}
+      {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
     ]
   }},
   "Sovereign Infrastructure & CBDCs": {{
     "synthesis": "...",
     "developments": [
-      {{ "title": "...", "source": "...", "details": "..." }}
+      {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
     ]
   }},
   "Regulatory & Legal Frameworks": {{
     "synthesis": "...",
     "developments": [
-      {{ "title": "...", "source": "...", "details": "..." }}
+      {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
     ]
   }}
 }}
@@ -135,7 +135,7 @@ Your job is to parse the strategic analysis JSON below and compile a publication
 Formatting Rules:
 1. DO NOT output a top-level H1 header (e.g. # Header). Start directly with H2 headers.
 2. Apply strict British English spelling (e.g., tokenised, tokenisation, utilised, prioritised, standardise, programmes, centre).
-3. Embed clean, inline Markdown links back to primary sources (or search terms if URL not present) wherever a project or entity is mentioned.
+3. Embed clean, inline Markdown links back to the actual primary source URLs provided in the developments JSON wherever that development, project, or entity is mentioned. If a primary source URL is not present, use a Google Search query (formatted as an absolute URL starting with https://www.google.com/search?q=...). Every link must be absolute and start with http:// or https://. Never use relative links, local files, or placeholder/stub identifiers.
 4. No AI Fluff: Avoid hedging phrases like "appears to", "it is evident that", "underscored by". State the operational facts plainly.
 
 Required Structural Layout:
@@ -171,6 +171,29 @@ Strategic Analysis JSON:
     except Exception as e:
         log_error(f"Chief Editor API execution failed: {e}")
         return None
+
+def validate_and_normalize_links(markdown_content):
+    import re
+    from urllib.parse import quote_plus
+    
+    # Match markdown links: [text](url)
+    link_pattern = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+    
+    def replace_link(match):
+        text = match.group(1)
+        url = match.group(2).strip()
+        
+        # If it starts with http://, https://, or is an internal anchor starting with #, preserve it
+        if url.startswith("http://") or url.startswith("https://") or url.startswith("#"):
+            return match.group(0)
+            
+        # Otherwise, resolve it to an absolute Google Search URL as a fallback
+        search_query = quote_plus(text)
+        fallback_url = f"https://www.google.com/search?q={search_query}"
+        print(f"WARNING: Normalizing relative/malformed link [{text}]({url}) to [{text}]({fallback_url})")
+        return f"[{text}]({fallback_url})"
+        
+    return link_pattern.sub(replace_link, markdown_content)
 
 def main():
     print("Pipeline orchestration run started...")
@@ -226,6 +249,8 @@ def main():
         log_error("Chief Editor failed to output briefing.")
         sys.exit(1)
         
+    briefing = validate_and_normalize_links(briefing)
+        
     briefing_path = os.path.join(WORKSPACE_ROOT, "pipeline", "output_briefing.md")
     with open(briefing_path, "w", encoding="utf-8") as f:
         f.write(briefing)
@@ -233,9 +258,12 @@ def main():
     
     # Step 4: Run Publishing Layer
     print("Invoking Publishing layer...")
+    publish_args = [sys.executable, os.path.join(WORKSPACE_ROOT, "pipeline", "publish.py")]
+    if "--dry-run" in sys.argv:
+        publish_args.append("--dry-run")
     try:
         subprocess.run(
-            [sys.executable, os.path.join(WORKSPACE_ROOT, "pipeline", "publish.py")],
+            publish_args,
             check=True
         )
         print("Pipeline run completed successfully.")
