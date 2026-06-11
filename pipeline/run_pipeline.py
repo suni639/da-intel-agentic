@@ -3,11 +3,36 @@ import sys
 import json
 import subprocess
 import datetime
+import time
 from google import genai
 from google.genai import types
 
 WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ERROR_LOG_PATH = os.path.join(WORKSPACE_ROOT, "error_log.txt")
+
+def generate_content_with_retry(client, model, contents, config=None, max_retries=5, initial_delay=2):
+    delay = initial_delay
+    for attempt in range(1, max_retries + 1):
+        try:
+            if config:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config
+                )
+            else:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents
+                )
+            return response
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Gemini API call attempt {attempt} failed: {error_msg}. Retrying in {delay}s...")
+            if attempt == max_retries:
+                raise e
+            time.sleep(delay)
+            delay *= 2  # Exponential backoff
 
 def log_error(msg):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -87,7 +112,8 @@ Raw feed articles:
 """
 
     try:
-        response = client.models.generate_content(
+        response = generate_content_with_retry(
+            client=client,
             model=model,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -136,7 +162,8 @@ Strategic Analysis JSON:
 """
 
     try:
-        response = client.models.generate_content(
+        response = generate_content_with_retry(
+            client=client,
             model=model,
             contents=prompt
         )
