@@ -66,7 +66,10 @@ def run_ingestion():
     feeds = {
         "CoinDesk": "https://www.coindesk.com/arc/outboundfeeds/rss/?outputType=xml",
         "The Block RSS": "https://www.theblock.co/rss.xml",
-        "BIS Research": "https://www.bis.org/doclist/rss_all_categories.rss"
+        "BIS Research": "https://www.bis.org/doclist/rss_all_categories.rss",
+        "Ledger Insights": "https://www.ledgerinsights.com/feed/",
+        "ECB Press": "https://www.ecb.europa.eu/rss/press.xml",
+        "BoE News": "https://www.bankofengland.co.uk/rss/news"
     }
     
     harvested = []
