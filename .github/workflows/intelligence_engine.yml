@@ -16,11 +16,15 @@ permissions:
 jobs:
   run-engine:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: main-repo
 
     steps:
       - name: Checkout main repository
         uses: actions/checkout@v4
         with:
+          path: main-repo
           # Fetch all history so git push works cleanly
           fetch-depth: 0
 
@@ -31,7 +35,6 @@ jobs:
           path: sunilkandola-hugo
           token: ${{ secrets.HUGO_REPO_PAT }}
           fetch-depth: 0
-          clean: false
 
       - name: Configure Git identity
         run: |
@@ -43,6 +46,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: main-repo/requirements.txt
 
       - name: Install dependencies
         run: |
