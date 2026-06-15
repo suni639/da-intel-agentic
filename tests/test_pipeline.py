@@ -57,5 +57,53 @@ class TestPipelineUtilities(unittest.TestCase):
         expected_normalized = "Read [Project Pontes](https://www.google.com/search?q=Project+Pontes) and [Drex](https://www.google.com/search?q=Drex)."
         self.assertEqual(validate_and_normalize_links(content_rel), expected_normalized)
 
+    def test_system_state_updates(self):
+        import run_pipeline
+        import tempfile
+        import shutil
+        import json
+        
+        # Create a temp directory to act as workspace root
+        temp_dir = tempfile.mkdtemp()
+        original_workspace_root = run_pipeline.WORKSPACE_ROOT
+        run_pipeline.WORKSPACE_ROOT = temp_dir
+        
+        try:
+            # Set up sample raw feed
+            sample_feed = [
+                {"title": "Test 1", "url": "https://example.com/1"},
+                {"title": "Test 2", "url": "https://example.com/2"}
+            ]
+            
+            # Run the update
+            run_pipeline.update_system_state(sample_feed)
+            
+            # Check file was created
+            state_file_path = os.path.join(temp_dir, "system_state.json")
+            self.assertTrue(os.path.exists(state_file_path))
+            
+            with open(state_file_path, "r", encoding="utf-8") as f:
+                state_data = json.load(f)
+                
+            self.assertIn("processed_urls", state_data)
+            self.assertIn("https://example.com/1", state_data["processed_urls"])
+            self.assertIn("https://example.com/2", state_data["processed_urls"])
+            
+            # Run it again with a new url to test merging/updating
+            new_feed = [
+                {"title": "Test 3", "url": "https://example.com/3"}
+            ]
+            run_pipeline.update_system_state(new_feed)
+            
+            with open(state_file_path, "r", encoding="utf-8") as f:
+                updated_state_data = json.load(f)
+                
+            self.assertIn("https://example.com/1", updated_state_data["processed_urls"])
+            self.assertIn("https://example.com/3", updated_state_data["processed_urls"])
+            
+        finally:
+            run_pipeline.WORKSPACE_ROOT = original_workspace_root
+            shutil.rmtree(temp_dir)
+
 if __name__ == '__main__':
     unittest.main()

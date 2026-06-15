@@ -195,6 +195,36 @@ def validate_and_normalize_links(markdown_content):
         
     return link_pattern.sub(replace_link, markdown_content)
 
+def update_system_state(raw_feed):
+    state_path = os.path.join(WORKSPACE_ROOT, "system_state.json")
+    if os.path.exists(state_path):
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                state = json.load(f)
+        except Exception as e:
+            print(f"Warning: Failed to load existing system state: {e}. Reinitializing.")
+            state = {"processed_urls": {}}
+    else:
+        state = {"processed_urls": {}}
+    
+    if "processed_urls" not in state:
+        state["processed_urls"] = {}
+        
+    import datetime
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    
+    for item in raw_feed:
+        url = item.get("url")
+        if url:
+            state["processed_urls"][url] = timestamp
+            
+    try:
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+        print(f"System state updated with {len(raw_feed)} new URLs and saved to {state_path}")
+    except Exception as e:
+        log_error(f"Failed to save system state: {e}")
+
 def main():
     print("Pipeline orchestration run started...")
     
@@ -267,6 +297,10 @@ def main():
             check=True
         )
         print("Pipeline run completed successfully.")
+        
+        # Save state only if it was NOT a dry run
+        if "--dry-run" not in sys.argv:
+            update_system_state(raw_feed)
     except Exception as e:
         log_error(f"Publishing script failed: {e}")
         sys.exit(1)

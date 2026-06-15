@@ -2,8 +2,8 @@ name: Digital Asset Intelligence Engine Scheduled Run
 
 on:
   schedule:
-    # Run every Monday at 07:00 UTC (08:00 AM UK time during BST, 07:00 AM UK time during GMT)
-    - cron: '0 7 * * 1'
+    # Run every Monday at 02:00 UTC (03:00 AM UK time during BST, 02:00 AM UK time during GMT)
+    - cron: '0 2 * * 1'
   workflow_dispatch:
     # Allows manual execution from the GitHub Actions UI
 
@@ -73,10 +73,20 @@ jobs:
 
       - name: Commit and push updated system state
         run: |
-          # Use force add because system_state.json is listed in .gitignore
-          git add --force system_state.json
-          git commit -m "chore: update system state [skip ci]" || echo "No changes to state"
-          git push origin HEAD:main
+          # Commit and push only if system_state.json exists and has changes
+          if [ -f system_state.json ]; then
+            echo "system_state.json found. Staging..."
+            # Use force add because system_state.json is listed in .gitignore
+            git add --force system_state.json
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: update system state [skip ci]"
+              git push origin HEAD:main
+            else
+              echo "No changes to commit in system_state.json"
+            fi
+          else
+            echo "system_state.json does not exist. Skipping commit."
+          fi
 
       - name: Upload pipeline logs
         if: always()
