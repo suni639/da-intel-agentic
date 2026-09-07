@@ -70,6 +70,7 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
         run: |
+          set -o pipefail
           python pipeline/run_pipeline.py 2>&1 | tee pipeline_output.log
 
       - name: Commit and push updated system state

@@ -10,29 +10,54 @@ from google.genai import types
 WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ERROR_LOG_PATH = os.path.join(WORKSPACE_ROOT, "error_log.txt")
 
-def generate_content_with_retry(client, model, contents, config=None, max_retries=5, initial_delay=2):
-    delay = initial_delay
-    for attempt in range(1, max_retries + 1):
-        try:
-            if config:
-                response = client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=config
-                )
-            else:
-                response = client.models.generate_content(
-                    model=model,
-                    contents=contents
-                )
-            return response
-        except Exception as e:
-            error_msg = str(e)
-            print(f"Gemini API call attempt {attempt} failed: {error_msg}. Retrying in {delay}s...")
-            if attempt == max_retries:
-                raise e
-            time.sleep(delay)
-            delay *= 2  # Exponential backoff
+def generate_content_with_retry(client, model, contents, config=None, max_retries=5, initial_delay=3, fallback_models=None):
+    if fallback_models is None:
+        fallback_models = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-flash-latest"]
+        
+    models_to_try = [model]
+    for fm in fallback_models:
+        if fm not in models_to_try:
+            models_to_try.append(fm)
+            
+    last_exception = None
+    for current_model in models_to_try:
+        delay = initial_delay
+        for attempt in range(1, max_retries + 1):
+            try:
+                if config:
+                    response = client.models.generate_content(
+                        model=current_model,
+                        contents=contents,
+                        config=config
+                    )
+                else:
+                    response = client.models.generate_content(
+                        model=current_model,
+                        contents=contents
+                    )
+                if current_model != model:
+                    print(f"Successfully generated content using fallback model: {current_model}")
+                return response
+            except Exception as e:
+                last_exception = e
+                error_msg = str(e)
+                print(f"Model {current_model} (attempt {attempt}/{max_retries}) failed: {error_msg}")
+                is_transient = any(err_code in error_msg for err_code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "500"])
+                if is_transient and attempt < max_retries:
+                    print(f"Retrying {current_model} in {delay}s...")
+                    time.sleep(delay)
+                    delay = min(delay * 2, 30)
+                elif is_transient and current_model != models_to_try[-1]:
+                    print(f"Switching to fallback model after retries exhausted on {current_model}...")
+                    break
+                else:
+                    if attempt == max_retries:
+                        break
+                    time.sleep(delay)
+                    delay = min(delay * 2, 30)
+                    
+    if last_exception:
+        raise last_exception
 
 def log_error(msg):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
