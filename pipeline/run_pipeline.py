@@ -92,15 +92,19 @@ def run_strategist(client, model, articles):
     print("Executing Macro Strategist (Noise Gate & Categorisation)...")
     
     prompt = f"""
-You are the Macro Strategist for the Institutional Digital Asset Intelligence pipeline.
+You are the Macro Strategist for the Institutional Digital Asset Intelligence pipeline, calibrated for institutional wholesale markets with a core focus on systemic commercial banking (such as Lloyds Banking Group and UK/global clearing rails).
 Your job is to apply a strict "Noise Gate" to the raw feed articles below and categorise the high-signal developments.
 
+Strategic Focus & Weighting Directive:
+- Global wholesale developments (US, EU, APAC, cross-border multi-ledger platforms) remain critical.
+- Apply a deliberate weighting/preference toward UK market developments and Tier-1 commercial bank infrastructure (e.g. Bank of England RTGS synchronisation, FCA Digital Securities Sandbox - DSS, UK Regulated Liability Network - RLN, deposit tokenisation, sterling liquidity, and commercial bank balance sheet mobility).
+
 Allowed Content Attributes (High-Signal):
-- Banking Infrastructure & Commercial Rails (Tokenised deposits, JPM Coin, GBTD, intraday settlement, wholesale expansions).
-- Institutional Asset Management & RWAs (Real-world asset tokenisation, sovereign bonds, private credit, tokenised funds, custody).
-- Sovereign Infrastructure & CBDCs (Wholesale CBDC trials, cross-border multi-ledger platforms, mBridge, Project Cedar).
-- Regulatory & Legal Frameworks (EU MiCA, UK Property Digital Assets Bill, US stablecoin rules, SEC mandates, sandboxes).
-- Post-Trade Utilities (DvP, atomic settlement, DTCC/Euroclear/Swift orchestration).
+- Banking Infrastructure & Commercial Rails: Commercial bank deposit tokens (GBP/USD/EUR), interbank settlement rails (Swift Digital Ledger, RLN, Project Agorá), 24/7 intraday liquidity, wholesale payment rails.
+- Institutional Asset Management & RWAs: Sovereign bond tokenisation (UK Gilts, US Treasuries), private credit, tokenised money market funds, institutional collateral management, regulated digital custody.
+- Sovereign Infrastructure & CBDCs: Wholesale central bank digital currencies, central bank synchronisation models, omnibus accounts, cross-border multi-currency ledgers (mBridge, Project Cedar).
+- Regulatory & Legal Frameworks: UK Property (Digital Assets) Bill, BoE/FCA Digital Securities Sandbox (DSS), UK stablecoin and custody regimes, EU MiCA, US federal frameworks, Basel Committee digital asset prudential standards.
+- Post-Trade Utilities: Delivery vs Payment (DvP), atomic settlement, collateral mobility, Euroclear/DTCC/Swift orchestration.
 
 Forbidden Content Attributes (Noise - DISCARD IMMEDIATELY):
 - Token spot price movements, daily gains/losses, or technical chart analysis.
@@ -113,7 +117,7 @@ For the approved articles, group them into the 4 pillars:
 3. Sovereign Infrastructure & CBDCs
 4. Regulatory & Legal Frameworks
 
-Write a custom synthesis sentence for each pillar explaining how these developments alter cross-border liquidity or capital efficiency.
+Write a custom synthesis sentence for each pillar explaining how these developments alter cross-border liquidity, commercial bank balance sheets, or capital efficiency.
 
 Return the result STRICTLY as a JSON object matching this structure (no markdown formatting blocks, no extra text):
 {{
@@ -166,6 +170,7 @@ def run_editor(client, model, strategic_analysis):
     
     prompt = f"""
 You are the Chief Editor for the Institutional Digital Asset Intelligence pipeline.
+Your audience consists of executive leaders and specialists in systemic commercial banking (e.g. Lloyds Banking Group) and wholesale institutional financial market infrastructure.
 Your job is to parse the strategic analysis JSON below and compile a publication-ready Markdown briefing.
 
 Formatting Rules:
@@ -174,10 +179,14 @@ Formatting Rules:
 3. Embed clean, inline Markdown links back to the actual primary source URLs provided in the developments JSON wherever that development, project, or entity is mentioned. If a primary source URL is not present, use a Google Search query (formatted as an absolute URL starting with https://www.google.com/search?q=...). Every link must be absolute and start with http:// or https://. Never use relative links, local files, or placeholder/stub identifiers.
 4. No AI Fluff: Avoid hedging phrases like "appears to", "it is evident that", "underscored by". State the operational facts plainly.
 
+Editorial Lens & Weighting:
+- Global wholesale developments remain foundational.
+- Where relevant, articulate implications for systemic UK commercial banking institutions, corporate treasury rails, deposit stickiness, and sterling wholesale liquidity.
+
 Required Structural Layout:
 
 ## 1. MACRO VIEW
-[Provide 5-7 punchy bullet points. Each bullet must open with a **bold declarative statement** (the headline), followed by 1-2 sentences of supporting facts. State the fact and why it matters to market plumbing. Write in British English. Scannable and direct.]
+[Provide 5-7 punchy bullet points. Each bullet must open with a **bold declarative statement** (the headline), followed by 1-2 sentences of supporting facts. State the fact and why it matters to market plumbing, balance sheets, or liquidity. Write in British English. Scannable and direct.]
 
 ## 2. CORE PILLAR DEVELOPMENTS
 * **Banking Infrastructure & Commercial Rails:** [Include detailed updates from the JSON]
@@ -187,7 +196,7 @@ Required Structural Layout:
 
 ## 3. STRUCTURAL & OPERATIONAL PAIN POINTS
 * **Interoperability Silos:** [Identify where separate systems/ledgers fail to bridge cleanly]
-* **Balance Sheet & Liquidity Friction:** [Identify balance sheet fragmentation or capital constraints]
+* **Balance Sheet & Liquidity Friction:** [Identify balance sheet fragmentation, commercial bank deposit flight, or capital constraints]
 * **Post-Trade Plumbing Constraints:** [Identify custodian or settlement bottleneck frictions]
 
 ## 4. NEW HIGH-SIGNAL TARGETS FOR TRACKING

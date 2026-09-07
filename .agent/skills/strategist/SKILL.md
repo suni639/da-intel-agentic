@@ -9,6 +9,13 @@ Apply strict wholesale market filters to your feed data, preserving deep institu
 
 # Filter Protocols
 
+### Strategic Weighting Directive
+* **Global Wholesale Baseline:** All wholesale institutional infrastructure across US, EU, and APAC remains critical.
+* **UK & Commercial Banking Weighting:** Apply deliberate weighting/preference toward developments relevant to Tier-1 UK commercial banking institutions (e.g. Lloyds Banking Group, Barclays, NatWest, HSBC) including:
+  * Sterling deposit tokenisation, UK Regulated Liability Network (RLN) pilots, and Project Agorá.
+  * Bank of England RTGS synchronisation / omnibus accounts and BoE/FCA Digital Securities Sandbox (DSS).
+  * Commercial bank intraday liquidity, collateral mobility (UK Gilts), and treasury rails.
+
 ### 1. Allowed Content Attributes (High-Signal Pass)
 * **Banking Infrastructure & Commercial Rails:** Tokenised commercial bank liabilities (deposit tokens, JPM Coin, GBTD), intraday liquidity settlement, wholesale network expansions.
 * **Institutional Asset Management & RWAs:** Real-World Asset (RWA) tokenisation (sovereign bonds, private credit, tokenised funds like BlackRock's BUIDL), security tokens, institutional custody architectures.

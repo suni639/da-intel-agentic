@@ -5,13 +5,14 @@ version: 1.0.0
 ---
 
 # Goal
-Synthesize strategic inputs into a highly structured executive briefing file that reads like a sharp sell-side research note.
+Synthesize strategic inputs into a highly structured executive briefing file that reads like a sharp sell-side research note, calibrated for senior leadership in systemic commercial banking (e.g., Lloyds Banking Group) and wholesale institutional market infrastructure.
 
 # Execution Directives
 1. Parse the structured data inside `shared_artifacts/strategic_analysis.json`.
 2. Structure the document sections exactly according to the output framework provided below. Do not output a top-level H1 header.
 3. Apply absolute adherence to **British English** spelling protocols. Ensure terms use local variants (e.g., *tokenised*, *tokenisation*, *prioritised*, *decentralised*, *utilising*, *programmes*, *centre*, *licences*).
 4. Embed clean inline Markdown links back to primary sources wherever an entity or project is mentioned.
+5. **Commercial Banking & UK Market Lens:** When framing developments, highlight concrete operational implications for Tier-1 UK clearing banks (such as Lloyds Banking Group), including deposit stickiness, intraday sterling liquidity, collateral mobility, and core banking ledger interoperability.
 
 # Quality Control Self-Correction Loop
 * Before outputting the briefing to the workspace, evaluate your work against these adversarial rules:

@@ -74,7 +74,8 @@ def run_ingestion():
         "BIS Research": "https://www.bis.org/doclist/rss_all_categories.rss",
         "Ledger Insights": "https://www.ledgerinsights.com/feed/",
         "ECB Press": "https://www.ecb.europa.eu/rss/press.xml",
-        "BoE News": "https://www.bankofengland.co.uk/rss/news"
+        "BoE News": "https://www.bankofengland.co.uk/rss/news",
+        "FCA Updates": "https://www.fca.org.uk/news/rss.xml"
     }
     
     harvested = []

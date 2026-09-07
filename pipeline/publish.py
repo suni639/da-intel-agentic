@@ -202,14 +202,29 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
 """
     return html_newsletter
 
+DEFAULT_RECIPIENTS = [
+    "sunilkandola87@gmail.com",
+    "sunil.kandola@lloydsbanking.com"
+]
+
+def parse_recipients(recipient_env):
+    if not recipient_env:
+        return list(DEFAULT_RECIPIENTS)
+    parts = re.split(r'[,;]', recipient_env)
+    recipients = [p.strip() for p in parts if p.strip()]
+    return recipients if recipients else list(DEFAULT_RECIPIENTS)
+
 # Email Delivery Layer (Multipart MIME)
-def send_email(subject, plain_body, html_body, recipient_email):
+def send_email(subject, plain_body, html_body, recipients):
+    if isinstance(recipients, str):
+        recipients = parse_recipients(recipients)
+        
     smtp_user = get_env_var('SMTP_USER')
     smtp_pass = get_env_var('SMTP_PASS')
     
     msg = MIMEMultipart('alternative')
     msg['From'] = smtp_user
-    msg['To'] = recipient_email
+    msg['To'] = ", ".join(recipients)
     msg['Subject'] = subject
     
     msg.attach(MIMEText(plain_body, 'plain', 'utf-8'))
@@ -227,9 +242,9 @@ def send_email(subject, plain_body, html_body, recipient_email):
             server.starttls()
             server.ehlo()
             server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_user, recipient_email, msg.as_string())
+            server.sendmail(smtp_user, recipients, msg.as_string())
             server.quit()
-            print("Email sent successfully!")
+            print(f"Email sent successfully to: {', '.join(recipients)}!")
             return True
         except Exception as e:
             log_error(f"Email delivery attempt {attempt} failed: {str(e)}")
@@ -307,21 +322,19 @@ summary: "Weekly synthesis of wholesale banking, CBDCs, RWAs, and digital asset 
         print("Email sending skipped due to missing environment variables.")
         sys.exit(0)
         
-    sender = get_env_var('SMTP_USER')
-    recipient = get_env_var('RECIPIENT_EMAIL')
-    if not recipient:
-        recipient = sender  # Fallback to sending to oneself
+    recipient_env = get_env_var('RECIPIENT_EMAIL')
+    recipients = parse_recipients(recipient_env)
         
     subject = f"Digital Asset Digest: {today_str}"
     html_content = convert_markdown_to_newsletter_html(subject, today_str, brief_content)
     
     if dry_run:
-        print(f"[Dry-run] Would send email to {recipient} via SMTP server smtp.gmail.com")
+        print(f"[Dry-run] Would send email to {', '.join(recipients)} via SMTP server smtp.gmail.com")
         print("HTML payload structure checked successfully.")
     else:
-        email_success = send_email(subject, brief_content, html_content, recipient)
+        email_success = send_email(subject, brief_content, html_content, recipients)
         if email_success:
-            print("Email delivered successfully.")
+            print(f"Email delivered successfully to {len(recipients)} recipient(s).")
         else:
             log_error("Email delivery failed.")
             sys.exit(1)
