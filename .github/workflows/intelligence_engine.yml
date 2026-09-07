@@ -30,6 +30,7 @@ jobs:
 
       - name: Checkout Hugo repository
         uses: actions/checkout@v4
+        continue-on-error: true
         with:
           repository: suni639/sunilkandola-hugo
           path: sunilkandola-hugo
