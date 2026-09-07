@@ -10,9 +10,14 @@ from google.genai import types
 WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ERROR_LOG_PATH = os.path.join(WORKSPACE_ROOT, "error_log.txt")
 
-def generate_content_with_retry(client, model, contents, config=None, max_retries=5, initial_delay=3, fallback_models=None):
+def generate_content_with_retry(client, model, contents, config=None, max_retries=4, initial_delay=3, fallback_models=None):
     if fallback_models is None:
-        fallback_models = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-flash-latest"]
+        fallback_models = [
+            "gemini-2.5-flash",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite"
+        ]
         
     models_to_try = [model]
     for fm in fallback_models:
@@ -42,6 +47,12 @@ def generate_content_with_retry(client, model, contents, config=None, max_retrie
                 last_exception = e
                 error_msg = str(e)
                 print(f"Model {current_model} (attempt {attempt}/{max_retries}) failed: {error_msg}")
+                
+                # If model is deprecated or not found (404), skip retries and switch immediately
+                if "404" in error_msg or "NOT_FOUND" in error_msg:
+                    print(f"Model {current_model} not found (404). Switching immediately to next fallback...")
+                    break
+                    
                 is_transient = any(err_code in error_msg for err_code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "500"])
                 if is_transient and attempt < max_retries:
                     print(f"Retrying {current_model} in {delay}s...")
