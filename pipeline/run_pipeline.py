@@ -92,59 +92,99 @@ def run_strategist(client, model, articles):
     print("Executing Macro Strategist (Noise Gate & Categorisation)...")
     
     prompt = f"""
-You are the Macro Strategist for the Institutional Digital Asset Intelligence pipeline, calibrated for institutional wholesale markets with a core focus on systemic commercial banking (such as Lloyds Banking Group and UK/global clearing rails).
+You are the Macro Strategist for the Institutional Digital Asset Intelligence pipeline, calibrated for wholesale financial markets with a core focus on commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets, and financial market infrastructure (FMIs).
 Your job is to apply a strict "Noise Gate" to the raw feed articles below and categorise the high-signal developments.
 
 Strategic Focus & Weighting Directive:
-- Global wholesale developments (US, EU, APAC, cross-border multi-ledger platforms) remain critical.
-- Apply a deliberate weighting/preference toward UK market developments and Tier-1 commercial bank infrastructure (e.g. Bank of England RTGS synchronisation, FCA Digital Securities Sandbox - DSS, UK Regulated Liability Network - RLN, deposit tokenisation, sterling liquidity, and commercial bank balance sheet mobility).
+- **Primary Geographic Balance:** Strongly weight developments across the UK, Europe (ECB, EU MiCA, Tier-1 European institutions), major US financial institutions, and premier global innovation hubs (Singapore MAS Project Guardian/GL1, Hong Kong HKMA Project Ensemble, Switzerland SDX). De-prioritise localized emerging-market retail pilots (e.g. India-specific retail crypto/CBDC) unless possessing systemic global cross-border market plumbing implications.
+- **Bank-Led Digital Money & Institutional Rails:** Prioritise commercial bank-led digital money and regulated settlement rails (tokenised deposits, commercial bank money, Fnality, Kinexys, GBTD, Goldman Sachs DAP, Canton Network, SWIFT, Project Agorá, RLN).
+- **Systemic Digital Asset & Treasury Players:** Welcome wholesale, corporate treasury, B2B cross-border, and commercial banking rails initiatives from major pure-play digital asset providers (e.g. Circle's USDC/Tazapay corporate rails, Ripple's RLUSD corporate treasury opportunity and institutional custody, Coinbase Institutional, regulated stablecoin issuers).
+- **UK Public Sector & Central Banking Focus:**
+  * Bank of England initiatives (Digital Securities Sandbox - DSS, RTGS synchronisation, wholesale settlement innovation).
+  * HM Treasury digital asset and stablecoin policy developments.
+  * UK Property (Digital Assets) Bill and associated legal/regulatory frameworks.
+- **Frontier & Emerging Innovations:** Non-prescriptively capture any genuine technological innovation across the digital assets space (e.g. AI/agentic payments, programmable payments, zero-knowledge privacy layers, account abstraction, novel cryptography, and new smart contract or atomic settlement primitives). Do NOT filter out innovative digital asset news simply because it does not include a specific buzzword like ZKP.
 
-Allowed Content Attributes (High-Signal):
-- Banking Infrastructure & Commercial Rails: Commercial bank deposit tokens (GBP/USD/EUR), interbank settlement rails (Swift Digital Ledger, RLN, Project Agorá), 24/7 intraday liquidity, wholesale payment rails.
-- Institutional Asset Management & RWAs: Sovereign bond tokenisation (UK Gilts, US Treasuries), private credit, tokenised money market funds, institutional collateral management, regulated digital custody.
-- Sovereign Infrastructure & CBDCs: Wholesale central bank digital currencies, central bank synchronisation models, omnibus accounts, cross-border multi-currency ledgers (mBridge, Project Cedar).
-- Regulatory & Legal Frameworks: UK Property (Digital Assets) Bill, BoE/FCA Digital Securities Sandbox (DSS), UK stablecoin and custody regimes, EU MiCA, US federal frameworks, Basel Committee digital asset prudential standards.
-- Post-Trade Utilities: Delivery vs Payment (DvP), atomic settlement, collateral mobility, Euroclear/DTCC/Swift orchestration.
+Forbidden Content Attributes (Noise Gate - DISCARD IMMEDIATELY):
+- **Non-Digital Asset Market Reforms:** General financial market reforms (e.g. FCA IPO listing reforms, general transaction reporting changes, handbook API updates) that do NOT have a direct, explicit connection to tokenisation, digital securities, or DLT market infrastructure.
+- **Speculative & Purely Retail Crypto Noise:** Token spot price movements, daily gains/losses, technical chart indicators, retail exchange listings, retail trading volumes, consumer wallet apps, memecoins, NFTs, and speculative DeFi yield farming.
 
-Forbidden Content Attributes (Noise - DISCARD IMMEDIATELY):
-- Token spot price movements, daily gains/losses, or technical chart analysis.
-- Retail exchange listings, retail trading volumes, consumer wallets, or rewards.
-- Speculative market commentary, influencer sentiment, memecoins, DeFi yield farms, NFTs.
+Allowed Content Attributes (High-Signal Pass):
+- Banking Infrastructure & Commercial Rails: Commercial bank deposit tokens (GBP/USD/EUR), interbank settlement rails (Swift Digital Ledger, RLN, Project Agorá, Fnality, Kinexys), major pure-play treasury/corporate payment rails (Circle, Ripple RLUSD, regulated stablecoins), 24/7 intraday liquidity, wholesale payment rails.
+- Capital Markets, Tokenised RWAs & Collateral Mobility: Sovereign bond tokenisation (UK Gilts, US Treasuries, Bunds), private credit, tokenised money market funds, tokenised commodities/gold, institutional collateral mobility, triparty repo optimization, regulated digital custody.
+- Sovereign Infrastructure & CBDCs: Wholesale central bank digital currencies, central bank synchronisation models, omnibus accounts, BoE/FCA Digital Securities Sandbox (DSS), HM Treasury policy, EU MiCA enforcement timelines, US payment stablecoin frameworks, MAS/HKMA sandbox initiatives.
+- Regulatory & Legal Frameworks: Global and jurisdictional legal structures directly governing digital assets, systemic stablecoins, and market infrastructure (BoE/FCA, HM Treasury, US Clarity Act, EU MiCA, MAS, HKMA).
+- Frontier & Emerging Innovations: Genuine technological advancements in digital assets (agentic payments, programmable payments, privacy/ZK layers, smart contract financial logic, cross-chain messaging).
+- Post-Trade Utilities & Interoperability: Delivery vs Payment (DvP), Payment vs Payment (PvP), atomic settlement mechanics, Euroclear/DTCC/Swift orchestration.
 
-For the approved articles, group them into the 4 pillars:
+Core Pillars:
 1. Banking Infrastructure & Commercial Rails
 2. Institutional Asset Management & RWAs
 3. Sovereign Infrastructure & CBDCs
 4. Regulatory & Legal Frameworks
+5. Frontier & Emerging Innovations (if applicable)
 
 Write a custom synthesis sentence for each pillar explaining how these developments alter cross-border liquidity, commercial bank balance sheets, or capital efficiency.
 
+Also synthesise the **Macro View**:
+Provide 4-6 bold, declarative macro observations synthesising the systemic implications for bank balance sheets, liquidity, and wholesale market infrastructure.
+
+Also analyse **Structural & Operational Pain Points** across:
+- interoperability_silos: Where disparate networks, private ledgers, or stablecoin standards fail to bridge cleanly, creating fragmented liquidity pools.
+- balance_sheet_and_liquidity_friction: Capital constraints, deposit disintermediation, parallel liquidity systems, or 24/7 liquidity buffer requirements under Basel III.
+- post_trade_plumbing_constraints: Settlement bottlenecks, custodian friction, or legacy ledger synchronisation and batch processing limitations.
+
+Also select **4-6 New High-Signal Targets for Tracking**:
+Dynamic, week-specific standout entities, pilots, or legislative bills directly emerging from this week's news with URL and 1-2 sentence institutional rationale.
+
 Return the result STRICTLY as a JSON object matching this structure (no markdown formatting blocks, no extra text):
 {{
-  "Banking Infrastructure & Commercial Rails": {{
-    "synthesis": "...",
-    "developments": [
-      {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
-    ]
+  "macro_view": [
+    {{
+      "headline": "Bold declarative statement...",
+      "detail": "1-2 sentences of supporting facts and systemic market plumbing/balance-sheet/liquidity implications."
+    }}
+  ],
+  "pillars": {{
+    "Banking Infrastructure & Commercial Rails": {{
+      "synthesis": "...",
+      "developments": [
+        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
+      ]
+    }},
+    "Institutional Asset Management & RWAs": {{
+      "synthesis": "...",
+      "developments": [
+        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
+      ]
+    }},
+    "Sovereign Infrastructure & CBDCs": {{
+      "synthesis": "...",
+      "developments": [
+        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
+      ]
+    }},
+    "Regulatory & Legal Frameworks": {{
+      "synthesis": "...",
+      "developments": [
+        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
+      ]
+    }},
+    "Frontier & Emerging Innovations": {{
+      "synthesis": "...",
+      "developments": [
+        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
+      ]
+    }}
   }},
-  "Institutional Asset Management & RWAs": {{
-    "synthesis": "...",
-    "developments": [
-      {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
-    ]
+  "structural_pain_points": {{
+    "interoperability_silos": "...",
+    "balance_sheet_and_liquidity_friction": "...",
+    "post_trade_plumbing_constraints": "..."
   }},
-  "Sovereign Infrastructure & CBDCs": {{
-    "synthesis": "...",
-    "developments": [
-      {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
-    ]
-  }},
-  "Regulatory & Legal Frameworks": {{
-    "synthesis": "...",
-    "developments": [
-      {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
-    ]
-  }}
+  "new_high_signal_targets": [
+    {{ "name": "...", "url": "...", "rationale": "..." }}
+  ]
 }}
 
 Raw feed articles:
@@ -160,7 +200,23 @@ Raw feed articles:
                 response_mime_type="application/json"
             )
         )
-        return json.loads(response.text)
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        elif text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+        
+        try:
+            return json.loads(text)
+        except Exception:
+            start = text.find("{")
+            if start != -1:
+                obj, _ = json.JSONDecoder().raw_decode(text[start:])
+                return obj
+            raise
     except Exception as e:
         log_error(f"Macro Strategist API execution failed: {e}")
         return None
@@ -170,37 +226,60 @@ def run_editor(client, model, strategic_analysis):
     
     prompt = f"""
 You are the Chief Editor for the Institutional Digital Asset Intelligence pipeline.
-Your audience consists of executive leaders and specialists in systemic commercial banking (e.g. Lloyds Banking Group) and wholesale institutional financial market infrastructure.
-Your job is to parse the strategic analysis JSON below and compile a publication-ready Markdown briefing.
+Your audience consists of executive leaders and specialists in systemic commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets, and wholesale financial market infrastructure.
+Your job is to parse the strategic analysis JSON below and compile an executive, publication-ready Markdown briefing.
 
 Formatting Rules:
 1. DO NOT output a top-level H1 header (e.g. # Header). Start directly with H2 headers.
-2. Apply strict British English spelling (e.g., tokenised, tokenisation, utilised, prioritised, standardise, programmes, centre).
+2. Apply strict British English spelling (e.g., tokenised, tokenisation, utilised, prioritised, standardise, programmes, centre, synchronisation, optimisation).
 3. Embed clean, inline Markdown links back to the actual primary source URLs provided in the developments JSON wherever that development, project, or entity is mentioned. If a primary source URL is not present, use a Google Search query (formatted as an absolute URL starting with https://www.google.com/search?q=...). Every link must be absolute and start with http:// or https://. Never use relative links, local files, or placeholder/stub identifiers.
 4. No AI Fluff: Avoid hedging phrases like "appears to", "it is evident that", "underscored by". State the operational facts plainly.
 
 Editorial Lens & Weighting:
-- Global wholesale developments remain foundational.
-- Where relevant, articulate implications for systemic UK commercial banking institutions, corporate treasury rails, deposit stickiness, and sterling wholesale liquidity.
+- Frame developments through the lens of institutional banking, treasury rails, balance-sheet liquidity, collateral mobility, and market plumbing.
+- Highlight commercial bank money, tokenised deposits, UK public sector (Bank of England DSS/RTGS sync, HM Treasury), wholesale market utilities, and institutional stablecoin/treasury rails (e.g. Circle, Ripple RLUSD).
 
-Required Structural Layout:
+Required Structural Layout (Strictly 4 Sections):
 
 ## 1. MACRO VIEW
-[Provide 5-7 punchy bullet points. Each bullet must open with a **bold declarative statement** (the headline), followed by 1-2 sentences of supporting facts. State the fact and why it matters to market plumbing, balance sheets, or liquidity. Write in British English. Scannable and direct.]
+[Provide 4-6 punchy bullet points. Each bullet must open with a **bold declarative statement** (the headline), followed by 1-2 sentences of supporting facts. State the fact and why it matters to market plumbing, balance sheets, or liquidity. Write in British English. Scannable and direct.]
 
 ## 2. CORE PILLAR DEVELOPMENTS
-* **Banking Infrastructure & Commercial Rails:** [Include detailed updates from the JSON]
-* **Institutional Asset Management & RWAs:** [Include detailed updates from the JSON]
-* **Sovereign Infrastructure & CBDCs:** [Include detailed updates from the JSON]
-* **Regulatory & Legal Frameworks:** [Include detailed updates from the JSON]
+
+### Banking Infrastructure & Commercial Rails
+*[1-2 sentence executive synthesis paragraph from JSON on liquidity, capital velocity, and commercial banking impact.]*
+
+*   [Primary Source Title](URL): [Concise development details and institutional implications.]
+
+### Institutional Asset Management & RWAs
+*[1-2 sentence executive synthesis paragraph from JSON on collateral mobility, fund tokenisation, or secondary liquidity.]*
+
+*   [Primary Source Title](URL): [Concise development details and institutional implications.]
+
+### Sovereign Infrastructure & CBDCs
+*[1-2 sentence executive synthesis paragraph from JSON on central bank settlement, RTGS synchronisation, or sandbox initiatives.]*
+
+*   [Primary Source Title](URL): [Concise development details and institutional implications.]
+
+### Regulatory & Legal Frameworks
+*[1-2 sentence executive synthesis paragraph from JSON on jurisdictional compliance, stablecoin regimes, or supervisory clarity.]*
+
+*   [Primary Source Title](URL): [Concise development details and institutional implications.]
+
+[If Frontier & Emerging Innovations has developments in JSON, include this fifth sub-pillar]:
+### Frontier & Emerging Innovations
+*[1-2 sentence executive synthesis paragraph from JSON on technical innovation across digital assets.]*
+
+*   [Primary Source Title](URL): [Concise development details and institutional implications.]
 
 ## 3. STRUCTURAL & OPERATIONAL PAIN POINTS
-* **Interoperability Silos:** [Identify where separate systems/ledgers fail to bridge cleanly]
-* **Balance Sheet & Liquidity Friction:** [Identify balance sheet fragmentation, commercial bank deposit flight, or capital constraints]
-* **Post-Trade Plumbing Constraints:** [Identify custodian or settlement bottleneck frictions]
+* **Interoperability Silos:** [Analysis from JSON on where disparate networks, private ledgers, or stablecoin standards fail to bridge cleanly.]
+* **Balance Sheet & Liquidity Friction:** [Analysis from JSON on capital constraints, deposit disintermediation, parallel liquidity systems, or 24/7 liquidity buffer requirements.]
+* **Post-Trade Plumbing Constraints:** [Analysis from JSON on settlement bottlenecks, custodian friction, or legacy ledger synchronisation.]
 
 ## 4. NEW HIGH-SIGNAL TARGETS FOR TRACKING
-* [List 3-5 hyper-specific project names, working groups, or pieces of legislation discovered this week to add to keyword filters. Include direct markdown source links.]
+* [**Target Name**](URL): [1-2 sentences explaining why institutions, corporate treasuries, or banks should track this specific target emerging from this week's developments.]
+[Include 4-6 dynamic targets from JSON.]
 
 Strategic Analysis JSON:
 {json.dumps(strategic_analysis, indent=2)}
@@ -296,11 +375,21 @@ def main():
         log_error(f"Ingestion script execution failed: {e}")
         sys.exit(1)
         
-    if not raw_feed:
+    if ("--recompile" in sys.argv or "--force" in sys.argv) and os.path.exists(os.path.join(WORKSPACE_ROOT, "shared_artifacts", "raw_enriched_feed.json")):
+        with open(os.path.join(WORKSPACE_ROOT, "shared_artifacts", "raw_enriched_feed.json"), "r", encoding="utf-8") as f:
+            cached_data = json.load(f)
+            cached_articles = cached_data.get("raw_articles", [])
+            seen_urls = {a.get("url") for a in raw_feed if a.get("url")}
+            for item in cached_articles:
+                if item.get("url") and item.get("url") not in seen_urls:
+                    raw_feed.append(item)
+                    seen_urls.add(item.get("url"))
+            print(f"Recompiling with {len(raw_feed)} total articles (merged fresh + cached)...")
+    elif not raw_feed:
         print("No new articles discovered. Stopping pipeline.")
         sys.exit(0)
         
-    print(f"Ingested {len(raw_feed)} new articles.")
+    print(f"Total articles for analysis: {len(raw_feed)}.")
     
     # Save a temporary raw feed file for the Scout enrichment step representation
     raw_enriched_path = os.path.join(WORKSPACE_ROOT, "shared_artifacts", "raw_enriched_feed.json")

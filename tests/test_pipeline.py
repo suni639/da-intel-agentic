@@ -21,25 +21,102 @@ class TestPipelineUtilities(unittest.TestCase):
         # Clean up
         del os.environ[test_var_name]
 
-    def test_newsletter_html_generation(self):
-        # Sample markdown brief content
+    def test_newsletter_html_generation_four_sections(self):
+        # Sample markdown brief with 4-section layout using H3 subsections
         sample_markdown = """## 1. MACRO VIEW
-* **Test point.** This is a test.
+* **Cross-border intraday liquidity now bypasses legacy suspensions.** DBS and Citi completed live payments.
 
 ## 2. CORE PILLAR DEVELOPMENTS
-* **Banking Infrastructure & Commercial Rails:** Update.
+
+### Banking Infrastructure & Commercial Rails
+*Commercial banks and pure-play stablecoin issuers are integrating payment rails.*
+
+*   [Circle Tazapay](https://example.com/circle): Circle completed acquisition.
+
+## 3. STRUCTURAL & OPERATIONAL PAIN POINTS
+* **Interoperability Silos:** Ledger isolation issues.
+
+## 4. NEW HIGH-SIGNAL TARGETS FOR TRACKING
+* [**Tazapay**](https://example.com/tazapay): B2B cross-border payments.
 """
-        subject = "Digital Asset Digest Test"
-        date_str = "2026-06-11"
+        subject = "Digital Asset Digest Test 4-Section"
+        date_str = "2026-09-14"
         
-        # Run conversion helper
         html_output = convert_markdown_to_newsletter_html(subject, date_str, sample_markdown)
         
-        # Verify HTML structure has successfully wrapped the Macro View card
+        # Verify HTML structure has successfully wrapped Macro View in synthesis-card
         self.assertIn("<!DOCTYPE html>", html_output)
         self.assertIn("synthesis-card", html_output)
+        self.assertIn("Cross-border intraday liquidity", html_output)
         self.assertIn("CORE PILLAR DEVELOPMENTS", html_output)
-        self.assertIn("Test point.", html_output)
+        self.assertIn("<h3>Banking Infrastructure &amp; Commercial Rails</h3>", html_output)
+        self.assertIn("STRUCTURAL &amp; OPERATIONAL PAIN POINTS", html_output)
+        self.assertIn("NEW HIGH-SIGNAL TARGETS FOR TRACKING", html_output)
+
+    def test_newsletter_html_generation_five_sections(self):
+        # Sample markdown brief with 5-section layout (backward compatibility)
+        sample_markdown = """## 1. STRATEGIC TAKEAWAYS
+* **What Happened This Week:** Breakthrough in wholesale tokenised deposit settlement.
+* **Why It Matters (Banks, Corporate Treasury & FMIs):** Eliminates weekend settlement risk.
+
+## 2. MACRO VIEW
+* **Cross-border intraday liquidity now bypasses legacy suspensions.** DBS and Citi completed live payments.
+
+## 3. CORE INSTITUTIONAL PILLARS
+* **Bank-Led Digital Money & Settlement Rails:** Update on Swift Digital Ledger.
+
+## 4. STRUCTURAL, BALANCE SHEET & OPERATIONAL FRICTIONS
+* **Interoperability Silos:** Ledger isolation issues.
+
+## 5. INSTITUTIONAL HORIZON RADAR & WATCHLIST
+* **Fnality:** Continuing interbank wholesale settlement trials.
+"""
+        subject = "Digital Asset Digest Test 5-Section"
+        date_str = "2026-09-14"
+        
+        html_output = convert_markdown_to_newsletter_html(subject, date_str, sample_markdown)
+        
+        # Verify HTML structure has successfully wrapped both Takeaways and Macro View cards
+        self.assertIn("<!DOCTYPE html>", html_output)
+        self.assertIn("takeaways-card", html_output)
+        self.assertIn("synthesis-card", html_output)
+        self.assertIn("What Happened This Week:", html_output)
+        self.assertIn("Cross-border intraday liquidity", html_output)
+        self.assertIn("CORE INSTITUTIONAL PILLARS", html_output)
+        self.assertIn("INSTITUTIONAL HORIZON RADAR &amp; WATCHLIST", html_output)
+
+    def test_feed_parsing_and_keyword_filter(self):
+        from ingestion import parse_feed, PUBLIC_SECTOR_KEYWORDS
+        from unittest.mock import patch, MagicMock
+
+        # Mock Atom feed XML
+        atom_xml = """<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <title>HM Treasury</title>
+          <entry>
+            <title>Speech on UK Digital Securities Sandbox and Tokenisation</title>
+            <link href="https://gov.uk/dss-speech" />
+            <summary>Discussion on DLT market infrastructure and settlement.</summary>
+          </entry>
+          <entry>
+            <title>Annual Agriculture Subsidy Report</title>
+            <link href="https://gov.uk/farming-report" />
+            <summary>Summary of farming support schemes.</summary>
+          </entry>
+        </feed>"""
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = atom_xml.encode("utf-8")
+
+        with patch("requests.get", return_value=mock_response):
+            # Test with keyword filter
+            filtered_articles = parse_feed("Test HMT", "https://gov.uk/feed.atom", keyword_filter=PUBLIC_SECTOR_KEYWORDS)
+            
+            # The digital securities entry should pass, agriculture entry should be filtered out
+            self.assertEqual(len(filtered_articles), 1)
+            self.assertIn("Digital Securities Sandbox", filtered_articles[0]["title"])
+            self.assertEqual(filtered_articles[0]["url"], "https://gov.uk/dss-speech")
 
     def test_link_validation_and_normalization(self):
         from run_pipeline import validate_and_normalize_links

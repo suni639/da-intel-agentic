@@ -48,7 +48,7 @@ def verify_environment():
         return False
     return True
 
-# HTML Newsletter Formatter (same as previous project)
+# HTML Newsletter Formatter
 def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
     try:
         import markdown
@@ -59,17 +59,56 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
 
     raw_html = markdown.markdown(markdown_content)
     
-    # Wrap the synthesis block in a card
-    if "<h2>1. MACRO VIEW</h2>" in raw_html:
-        parts = raw_html.split("<h2>2. CORE PILLAR DEVELOPMENTS</h2>")
-        if len(parts) > 1:
-            synthesis_part = parts[0]
-            rest_part = parts[1]
-            
-            synthesis_part = synthesis_part.replace("<p>", '<div class="synthesis-card"><p>', 1)
-            synthesis_part += '</div>'
-            
-            raw_html = synthesis_part + "<h2>2. CORE PILLAR DEVELOPMENTS</h2>" + rest_part
+    # Wrap Strategic Takeaways in an executive takeaways card
+    if "<h2>1. STRATEGIC TAKEAWAYS</h2>" in raw_html and "<h2>2. MACRO VIEW</h2>" in raw_html:
+        parts = raw_html.split("<h2>2. MACRO VIEW</h2>", 1)
+        takeaway_part = parts[0]
+        rest = "<h2>2. MACRO VIEW</h2>" + parts[1]
+        header_str = "<h2>1. STRATEGIC TAKEAWAYS</h2>"
+        h_idx = takeaway_part.find(header_str)
+        before_h = takeaway_part[:h_idx + len(header_str)]
+        after_h = takeaway_part[h_idx + len(header_str):]
+        raw_html = before_h + '<div class="takeaways-card">' + after_h + '</div>' + rest
+
+    # Wrap Macro View in a synthesis card
+    if "<h2>2. MACRO VIEW</h2>" in raw_html and "<h2>3. CORE INSTITUTIONAL PILLARS</h2>" in raw_html:
+        parts = raw_html.split("<h2>3. CORE INSTITUTIONAL PILLARS</h2>", 1)
+        macro_part = parts[0]
+        rest = "<h2>3. CORE INSTITUTIONAL PILLARS</h2>" + parts[1]
+        header_str = "<h2>2. MACRO VIEW</h2>"
+        h_idx = macro_part.find(header_str)
+        before_h = macro_part[:h_idx + len(header_str)]
+        after_h = macro_part[h_idx + len(header_str):]
+        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
+    elif "<h2>2. MACRO VIEW</h2>" in raw_html and "<h2>3. CORE PILLAR DEVELOPMENTS</h2>" in raw_html:
+        parts = raw_html.split("<h2>3. CORE PILLAR DEVELOPMENTS</h2>", 1)
+        macro_part = parts[0]
+        rest = "<h2>3. CORE PILLAR DEVELOPMENTS</h2>" + parts[1]
+        header_str = "<h2>2. MACRO VIEW</h2>"
+        h_idx = macro_part.find(header_str)
+        before_h = macro_part[:h_idx + len(header_str)]
+        after_h = macro_part[h_idx + len(header_str):]
+        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
+    elif "<h2>1. MACRO VIEW</h2>" in raw_html and "<h2>2. CORE PILLAR DEVELOPMENTS</h2>" in raw_html:
+        # 4-section briefings
+        parts = raw_html.split("<h2>2. CORE PILLAR DEVELOPMENTS</h2>", 1)
+        synthesis_part = parts[0]
+        rest = "<h2>2. CORE PILLAR DEVELOPMENTS</h2>" + parts[1]
+        header_str = "<h2>1. MACRO VIEW</h2>"
+        h_idx = synthesis_part.find(header_str)
+        before_h = synthesis_part[:h_idx + len(header_str)]
+        after_h = synthesis_part[h_idx + len(header_str):]
+        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
+    elif "<h2>1. MACRO VIEW</h2>" in raw_html and "<h2>2. CORE INSTITUTIONAL PILLARS</h2>" in raw_html:
+        # 4-section briefings with alternate pillar header
+        parts = raw_html.split("<h2>2. CORE INSTITUTIONAL PILLARS</h2>", 1)
+        synthesis_part = parts[0]
+        rest = "<h2>2. CORE INSTITUTIONAL PILLARS</h2>" + parts[1]
+        header_str = "<h2>1. MACRO VIEW</h2>"
+        h_idx = synthesis_part.find(header_str)
+        before_h = synthesis_part[:h_idx + len(header_str)]
+        after_h = synthesis_part[h_idx + len(header_str):]
+        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
 
     css_styles = """
     body {
@@ -104,7 +143,7 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
       font-size: 13px;
       color: #94a3b8;
       font-weight: 500;
-      }
+    }
     .content {
       padding: 32px;
       line-height: 1.6;
@@ -123,11 +162,55 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
+    .content h3 {
+      font-size: 14.5px;
+      font-weight: 700;
+      color: #0f172a;
+      border-bottom: 1.5px solid #cbd5e1;
+      padding-bottom: 5px;
+      margin-top: 24px;
+      margin-bottom: 10px;
+      letter-spacing: -0.2px;
+    }
     .content p {
       margin-top: 0;
       margin-bottom: 16px;
       font-size: 14px;
       color: #475569;
+    }
+    .content p em {
+      display: block;
+      font-style: normal;
+      background-color: #f8fafc;
+      border-left: 3px solid #64748b;
+      padding: 8px 12px;
+      margin-top: 6px;
+      margin-bottom: 12px;
+      color: #334155;
+      font-size: 13.5px;
+      line-height: 1.5;
+      border-radius: 0 4px 4px 0;
+    }
+    .takeaways-card {
+      background-color: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-left: 5px solid #0f172a;
+      padding: 20px;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 24px;
+    }
+    .takeaways-card ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .takeaways-card li {
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #1e293b;
+      line-height: 1.6;
+    }
+    .takeaways-card li strong {
+      color: #0f172a;
     }
     .synthesis-card {
       background-color: #f8fafc;
@@ -303,13 +386,22 @@ summary: "Weekly synthesis of wholesale banking, CBDCs, RWAs, and digital asset 
                 # Git Auto-Publish
                 if os.path.exists(os.path.join(hugo_dir, ".git")):
                     print("Committing and pushing to Hugo repository...")
+                    subprocess.run(["git", "pull", "--rebase"], cwd=hugo_dir, capture_output=True, text=True)
                     subprocess.run(["git", "add", "content/intel/"], cwd=hugo_dir, check=True)
-                    subprocess.run(["git", "commit", "-m", f"Auto-publish weekly brief {today_str}"], cwd=hugo_dir, check=True)
-                    push_res = subprocess.run(["git", "push"], cwd=hugo_dir, capture_output=True, text=True)
-                    if push_res.returncode == 0:
-                        print("Successfully pushed to Hugo remote repository.")
+                    status_res = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=hugo_dir)
+                    if status_res.returncode != 0:
+                        subprocess.run(["git", "commit", "-m", f"Auto-publish weekly brief {today_str}"], cwd=hugo_dir, check=True)
+                        push_res = subprocess.run(["git", "push"], cwd=hugo_dir, capture_output=True, text=True)
+                        if push_res.returncode != 0:
+                            # Attempt rebase and push once more if remote had updates
+                            subprocess.run(["git", "pull", "--rebase"], cwd=hugo_dir, capture_output=True, text=True)
+                            push_res = subprocess.run(["git", "push"], cwd=hugo_dir, capture_output=True, text=True)
+                        if push_res.returncode == 0:
+                            print("Successfully pushed to Hugo remote repository.")
+                        else:
+                            log_error(f"Git push failed: {push_res.stderr.strip()}")
                     else:
-                        log_error(f"Git push failed: {push_res.stderr.strip()}")
+                        print("No changes to commit in Hugo site.")
                 else:
                     print("Hugo Git repository not found. Skipping auto-publish push.")
             except Exception as e:
