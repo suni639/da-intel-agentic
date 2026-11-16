@@ -6,6 +6,11 @@ on:
     - cron: '0 2 * * 1'
   workflow_dispatch:
     # Allows manual execution from the GitHub Actions UI
+    inputs:
+      dry_run:
+        description: 'Dry run: build the brief but skip email, Hugo push and state commit'
+        type: boolean
+        default: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -72,11 +77,16 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          DRY_RUN_FLAG: ${{ inputs.dry_run && '--dry-run' || '' }}
         run: |
           set -o pipefail
-          python pipeline/run_pipeline.py 2>&1 | tee pipeline_output.log
+          echo "Dry run flag: '${DRY_RUN_FLAG}'"
+          python pipeline/run_pipeline.py $DRY_RUN_FLAG 2>&1 | tee pipeline_output.log
 
       - name: Commit and push updated system state
+        # Only real runs on main may write state; a dispatch from a feature
+        # branch would otherwise push that branch's commits to main.
+        if: ${{ !inputs.dry_run && github.ref == 'refs/heads/main' }}
         run: |
           # Commit and push only if system_state.json exists and has changes
           if [ -f system_state.json ]; then
@@ -101,3 +111,5 @@ jobs:
           path: |
             main-repo/pipeline_output.log
             main-repo/error_log.txt
+            main-repo/pipeline/output_briefing.md
+            main-repo/shared_artifacts/strategic_analysis.json
