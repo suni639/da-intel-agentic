@@ -86,6 +86,7 @@ Ensure the following variables are configured:
 - `SMTP_PASS`: Your Gmail App Password (generated via Google Account settings).
 - `RECIPIENT_EMAIL`: Destination address(es) for the briefing, comma- or semicolon-separated (defaults to `SMTP_USER` if not set).
 - `GEMINI_MODEL` (Optional): Primary model (default `gemini-2.5-flash`).
+- `GEMINI_API_VERSION` (Optional): Gemini API version (default `v1beta`, which structured JSON output requires).
 - `GEMINI_FALLBACK_MODELS` (Optional): Comma-separated fallback chain used when the primary model is unavailable. Rate-limit and server errors (429/5xx) are retried with backoff; auth errors (401/403) fail immediately.
 - `HUGO_DIR` (Optional): Path to your local Hugo site repository directory. If not set, defaults to a sibling folder named `sunilkandola-hugo`.
 

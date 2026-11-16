@@ -89,6 +89,13 @@ def generate_content_with_retry(client, model, contents, config=None, max_retrie
     raise last_exception
 
 
+def make_client(api_key):
+    # Structured output (JSON mode / response_schema) is only served on v1beta;
+    # newer google-genai releases default to v1, which rejects it with a 400.
+    api_version = get_env_var("GEMINI_API_VERSION") or "v1beta"
+    return genai.Client(api_key=api_key, http_options=types.HttpOptions(api_version=api_version))
+
+
 def _strip_code_fences(text):
     text = (text or "").strip()
     if text.startswith("```json"):
@@ -351,7 +358,7 @@ def main():
         log_error("GEMINI_API_KEY environment variable is not set. Pipeline aborted.")
         sys.exit(1)
         
-    client = genai.Client(api_key=gemini_key)
+    client = make_client(gemini_key)
     gemini_model = get_env_var("GEMINI_MODEL") or DEFAULT_MODEL
     
     # Step 1: Run Ingestion

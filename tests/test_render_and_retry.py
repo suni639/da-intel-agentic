@@ -199,6 +199,13 @@ class TestRetry(unittest.TestCase):
         self.assertIsInstance(run_pipeline.parse_analysis(resp), StrategicAnalysis)
 
 
+class TestClient(unittest.TestCase):
+    def test_client_uses_v1beta_for_json_mode(self):
+        os.environ.pop("GEMINI_API_VERSION", None)
+        client = run_pipeline.make_client("dummy-key")
+        self.assertEqual(client._api_client._http_options.api_version, "v1beta")
+
+
 class TestStateAndPublish(unittest.TestCase):
     def test_prune_processed_urls(self):
         now = datetime.datetime(2026, 11, 16, tzinfo=datetime.timezone.utc)
