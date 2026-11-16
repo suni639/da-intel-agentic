@@ -146,6 +146,9 @@ JARGON_SUGGESTIONS = {
     "foundational": "core", "proliferation": "growth", "necessitate": "require",
     "necessitates": "requires", "impacting": "affecting", "inaugural": "first",
     "concurrently": "at the same time", "in order to": "to", "a range of": "several",
+    ", affecting": "(end the sentence, or say concretely what changes)",
+    ", enabling": "(end the sentence, or say concretely what changes)",
+    ", impacting": "(end the sentence, or say concretely what changes)",
 }
 HEDGE_PHRASES += [j for j in JARGON_SUGGESTIONS if j not in HEDGE_PHRASES]
 
