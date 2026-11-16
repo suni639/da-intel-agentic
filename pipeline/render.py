@@ -95,6 +95,21 @@ def to_british(text: str) -> str:
     return _AMERICANISM.sub(fix, text)
 
 
+def _map_prose(analysis: StrategicAnalysis, fn) -> None:
+    for point in analysis.macro_view:
+        point.headline, point.detail = fn(point.headline), fn(point.detail)
+    for pillar in analysis.pillars:
+        pillar.synthesis = fn(pillar.synthesis)
+        for dev in pillar.developments:
+            dev.details = fn(dev.details)
+    pp = analysis.structural_pain_points
+    pp.interoperability_silos = fn(pp.interoperability_silos)
+    pp.balance_sheet_and_liquidity_friction = fn(pp.balance_sheet_and_liquidity_friction)
+    pp.post_trade_plumbing_constraints = fn(pp.post_trade_plumbing_constraints)
+    for target in analysis.new_high_signal_targets:
+        target.rationale = fn(target.rationale)
+
+
 def apply_british_english(analysis: StrategicAnalysis) -> None:
     """Normalise spelling in prose fields only.
 
@@ -114,6 +129,40 @@ def apply_british_english(analysis: StrategicAnalysis) -> None:
     pp.post_trade_plumbing_constraints = to_british(pp.post_trade_plumbing_constraints)
     for target in analysis.new_high_signal_targets:
         target.rationale = to_british(target.rationale)
+
+
+# Corporate jargon: replace with plain words (suggestions are given to the editor).
+JARGON_SUGGESTIONS = {
+    "utilise": "use", "utilises": "uses", "utilised": "used", "utilising": "using",
+    "leverage": "use", "leverages": "uses", "leveraging": "using",
+    "facilitate": "allow / help", "facilitates": "allows / helps", "facilitating": "allowing",
+    "enhance": "improve", "enhances": "improves", "enhanced": "improved", "enhancing": "improving",
+    "optimise": "improve", "optimises": "improves", "optimising": "improving",
+    "synergy": "(cut)", "synergies": "(cut)", "paradigm": "model", "holistic": "(cut)",
+    "ecosystem": "market / network", "stakeholders": "banks / firms (name them)",
+    "going forward": "(cut)", "best-in-class": "(cut)", "value proposition": "benefit",
+    "operationalise": "put into practice", "capabilities": "(say what it can do)",
+    "solution": "product / service / system", "solutions": "products / services",
+    "foundational": "core", "proliferation": "growth", "necessitate": "require",
+    "necessitates": "requires", "impacting": "affecting", "inaugural": "first",
+    "concurrently": "at the same time", "in order to": "to", "a range of": "several",
+}
+HEDGE_PHRASES += [j for j in JARGON_SUGGESTIONS if j not in HEDGE_PHRASES]
+
+# Exact one-for-one swaps that are always safe to apply deterministically.
+_SAFE_SWAPS = {
+    "utilise": "use", "utilises": "uses", "utilised": "used", "utilising": "using",
+    "inaugural": "first", "concurrently": "at the same time", "in order to": "to",
+}
+
+
+def plain_english(text: str) -> str:
+    def swap(match):
+        word = match.group(0)
+        repl = _SAFE_SWAPS[word.lower()]
+        return repl[0].upper() + repl[1:] if word[0].isupper() else repl
+    pattern = r"\b(" + "|".join(re.escape(w) for w in _SAFE_SWAPS) + r")\b"
+    return re.sub(pattern, swap, text, flags=re.IGNORECASE)
 
 
 _HEDGE_RE = [(p, re.compile(r"\b" + re.escape(p) + r"\b", re.IGNORECASE)) for p in HEDGE_PHRASES]
@@ -200,7 +249,7 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
             continue
         lines.append(f"### {name.value}")
         if pillar.synthesis.strip():
-            lines.append(f"*{_oneline(pillar.synthesis).strip('* ')}*")
+            lines.append(_oneline(pillar.synthesis).strip("* "))
         lines.append("")
         for dev in pillar.developments:
             source = _oneline(dev.source)
@@ -233,6 +282,7 @@ def finalise_briefing(analysis: StrategicAnalysis, allowed_urls: Iterable[str]) 
     for warning in enforce_link_allowlist(analysis, allowed_urls):
         print(f"WARNING: {warning}", file=sys.stderr)
     apply_british_english(analysis)
+    _map_prose(analysis, plain_english)
     markdown_text = render_briefing(analysis)
     hedges = find_hedging(prose_text(analysis))
     if hedges:

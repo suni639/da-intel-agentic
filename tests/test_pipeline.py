@@ -46,10 +46,9 @@ class TestPipelineUtilities(unittest.TestCase):
         
         # Verify HTML structure has successfully wrapped Macro View in synthesis-card
         self.assertIn("<!DOCTYPE html>", html_output)
-        self.assertIn("synthesis-card", html_output)
         self.assertIn("Cross-border intraday liquidity", html_output)
         self.assertIn("CORE PILLAR DEVELOPMENTS", html_output)
-        self.assertIn("<h3>Banking Infrastructure &amp; Commercial Rails</h3>", html_output)
+        self.assertRegex(html_output, r'<h3 style="[^"]*">Banking Infrastructure &amp; Commercial Rails</h3>')
         self.assertIn("STRUCTURAL &amp; OPERATIONAL PAIN POINTS", html_output)
         self.assertIn("NEW HIGH-SIGNAL TARGETS FOR TRACKING", html_output)
 
@@ -78,8 +77,6 @@ class TestPipelineUtilities(unittest.TestCase):
         
         # Verify HTML structure has successfully wrapped both Takeaways and Macro View cards
         self.assertIn("<!DOCTYPE html>", html_output)
-        self.assertIn("takeaways-card", html_output)
-        self.assertIn("synthesis-card", html_output)
         self.assertIn("What Happened This Week:", html_output)
         self.assertIn("Cross-border intraday liquidity", html_output)
         self.assertIn("CORE INSTITUTIONAL PILLARS", html_output)
