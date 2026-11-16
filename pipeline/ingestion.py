@@ -1,18 +1,26 @@
-import os
-import sys
+import calendar
+import datetime
 import json
-import requests
+import os
+import re
+import sys
+from functools import lru_cache
 from urllib.parse import urljoin
+
+import feedparser
+import requests
 from bs4 import BeautifulSoup
-import warnings
-from bs4 import XMLParsedAsHTMLWarning
 
-# Suppress BS4 XML warning
-warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+from feeds import INSTITUTIONAL_KEYWORDS, PUBLIC_SECTOR_KEYWORDS, active_feeds
 
-# Paths optimized for our new agent workspace
 WORKSPACE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_PATH = os.path.join(WORKSPACE_DIR, "system_state.json")
+
+# Only consider items published within this window (undated items are kept).
+LOOKBACK_DAYS = int(os.environ.get("INGEST_LOOKBACK_DAYS", "8"))
+# Bound the prompt size: per-feed cap and per-article text length.
+MAX_ITEMS_PER_FEED = int(os.environ.get("INGEST_MAX_ITEMS_PER_FEED", "25"))
+CONTENT_CHARS = 800
 
 # Load state history if present to ensure proper deduplication
 if os.path.exists(STATE_PATH):
@@ -21,121 +29,179 @@ if os.path.exists(STATE_PATH):
 else:
     state = {"processed_urls": {}}
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-}
+# Identify honestly first; some publishers block non-browser agents, so fall
+# back to a browser string only when the polite request is refused.
+BOT_USER_AGENT = "Mozilla/5.0 (compatible; DA-Intel-RSS-Reader/1.0)"
+BROWSER_USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+HEADERS = {"User-Agent": BROWSER_USER_AGENT}  # kept for backwards compatibility
 
-def parse_feed(source_name, feed_url, keyword_filter=None):
-    articles = []
-    try:
-        r = requests.get(feed_url, headers=HEADERS, timeout=15)
-        if r.status_code != 200:
-            print(f"[ingestion] {source_name}: HTTP {r.status_code} - feed skipped", file=sys.stderr)
-            return articles
-        soup = BeautifulSoup(r.content, 'html.parser')
-        
-        # Support both RSS 2.0 (<item>) and Atom 1.0 (<entry>)
-        items = soup.find_all('item')
-        is_atom = False
-        if not items:
-            items = soup.find_all('entry')
-            is_atom = True
 
-        seen_new = 0
-        for item in items:
-            title = item.find('title').get_text(strip=True) if item.find('title') else ""
-            
-            link = ""
-            if is_atom:
-                link_tag = item.find('link')
-                if link_tag:
-                    link = link_tag.get('href', '') or link_tag.get_text(strip=True)
-            else:
-                # Extract link robustly as html.parser treats <link> as void tag
-                link_tag = item.find('link')
-                if link_tag:
-                    text = link_tag.get_text(strip=True)
-                    if text:
-                        link = text
-                    elif link_tag.next_sibling:
-                        link = link_tag.next_sibling.strip()
-                
-                if not link and link_tag and 'href' in link_tag.attrs:
-                    link = link_tag['href']
-                
-            if link:
-                # Resolve relative paths to absolute URLs
-                link = urljoin(feed_url, link)
-            
-            if is_atom:
-                summary_tag = item.find('summary') or item.find('content')
-                desc = summary_tag.get_text(strip=True) if summary_tag else ""
-            else:
-                desc = item.find('description').get_text(strip=True) if item.find('description') else ""
-            
-            clean_content = BeautifulSoup(desc, 'html.parser').get_text(strip=True)[:1500]
-            
-            # Apply keyword filter for broad public-sector/regulator feeds to avoid noise
-            if keyword_filter:
-                combined_text = f"{title} {clean_content}".lower()
-                if not any(kw.lower() in combined_text for kw in keyword_filter):
-                    continue
+def log(msg):
+    print(f"[ingestion] {msg}", file=sys.stderr)
 
-            if link and link not in state.get("processed_urls", {}):
-                seen_new += 1
-                articles.append({
-                    "title": title,
-                    "url": link,
-                    "source": source_name,
-                    "content": clean_content
-                })
-        print(f"[ingestion] {source_name}: {len(items)} items in feed, {seen_new} new after filtering",
-              file=sys.stderr)
-        if not items:
-            print(f"[ingestion] WARNING: {source_name} returned no items - check the feed URL "
-                  f"or whether the site is blocking the client", file=sys.stderr)
-    except Exception as e:
-        print(f"[ingestion] Error parsing feed {source_name}: {e}", file=sys.stderr)
+
+def fetch(url, timeout=15):
+    """GET a feed. Returns (status_code, content_bytes, agent_label)."""
+    last_status, last_exc = None, None
+    for label, agent in (("bot", BOT_USER_AGENT), ("browser", BROWSER_USER_AGENT)):
+        try:
+            r = requests.get(url, headers={"User-Agent": agent,
+                                           "Accept": "application/rss+xml, application/atom+xml, "
+                                                     "application/xml;q=0.9, */*;q=0.8"},
+                             timeout=timeout)
+        except Exception as e:  # network error: try the other agent once
+            last_exc = e
+            continue
+        last_status = r.status_code
+        if r.status_code == 200 and r.content.strip():
+            return r.status_code, r.content, label
+    if last_status is None and last_exc is not None:
+        raise last_exc
+    return last_status, b"", None
+
+
+@lru_cache(maxsize=None)
+def _keyword_regex(keywords):
+    parts = []
+    for kw in keywords:
+        escaped = re.escape(kw.lower())
+        start = r"\b" if re.match(r"\w", kw) else ""
+        end = r"\b" if re.search(r"\w$", kw) else ""
+        parts.append(f"{start}{escaped}{end}")
+    return re.compile("|".join(parts))
+
+
+def matches_keywords(text, keywords):
+    return bool(_keyword_regex(tuple(keywords)).search(text.lower()))
+
+
+def _entry_datetime(entry):
+    for key in ("published_parsed", "updated_parsed", "created_parsed"):
+        value = entry.get(key)
+        if value:
+            return datetime.datetime.fromtimestamp(calendar.timegm(value), tz=datetime.timezone.utc)
+    return None
+
+
+def _clean_text(html_text):
+    return " ".join(BeautifulSoup(html_text or "", "html.parser").get_text(" ", strip=True).split())
+
+
+def parse_entries(source_name, feed_url, content, keyword_filter=None, now=None,
+                  lookback_days=LOOKBACK_DAYS):
+    """Parse feed bytes into article dicts, applying filter, lookback and dedup state."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    cutoff = now - datetime.timedelta(days=lookback_days)
+    parsed = feedparser.parse(content)
+    processed = state.get("processed_urls", {})
+
+    articles, stale, filtered = [], 0, 0
+    for entry in parsed.entries:
+        link = (entry.get("link") or "").strip()
+        if not link:
+            continue
+        link = urljoin(feed_url, link)
+
+        title = _clean_text(entry.get("title", ""))
+        publisher = source_name
+        src = entry.get("source")
+        if isinstance(src, dict) and src.get("title"):
+            # Google News: "Headline - Publisher"; keep the real publisher name.
+            publisher = src["title"]
+            suffix = f" - {publisher}"
+            if title.endswith(suffix):
+                title = title[: -len(suffix)]
+
+        summary = entry.get("summary") or ""
+        if not summary and entry.get("content"):
+            summary = entry["content"][0].get("value", "")
+        text = _clean_text(summary)[:CONTENT_CHARS]
+
+        published = _entry_datetime(entry)
+        if published and published < cutoff:
+            stale += 1
+            continue
+
+        if keyword_filter and not matches_keywords(f"{title} {text}", keyword_filter):
+            filtered += 1
+            continue
+
+        if link in processed:
+            continue
+
+        articles.append({
+            "title": title,
+            "url": link,
+            "source": publisher,
+            "published": published.isoformat() if published else None,
+            "content": text,
+        })
+
+    log(f"{source_name}: {len(parsed.entries)} items in feed, {stale} older than {lookback_days}d, "
+        f"{filtered} filtered out, {len(articles)} new")
+    if not parsed.entries:
+        log(f"WARNING: {source_name} returned no items - check the feed URL or whether "
+            f"the site is blocking the client")
     return articles
 
-# Institutional Digital Asset keywords for filtering general regulator feeds
-PUBLIC_SECTOR_KEYWORDS = [
-    "token", "tokenisation", "tokenization", "digital asset", "digital assets",
-    "digital pound", "cbdc", "dss", "digital securities", "sandbox", "dlt",
-    "distributed ledger", "blockchain", "stablecoin", "crypto", "settlement",
-    "rtgs", "synchronisation", "synchronization", "deposit token", "tokenised deposit",
-    "commercial bank money", "wholesale", "rwa", "fmi", "market infrastructure",
-    "clearing", "collateral", "programmable", "fnality", "kinexys", "swift",
-    "property (digital assets)", "custody", "t+1", "agentic", "zero-knowledge", "zk"
-]
+
+def parse_feed(source_name, feed_url, keyword_filter=None):
+    try:
+        status, content, agent = fetch(feed_url)
+    except Exception as e:
+        log(f"Error fetching feed {source_name}: {e}")
+        return []
+    if status != 200:
+        log(f"{source_name}: HTTP {status} - feed skipped")
+        return []
+    if agent == "browser":
+        log(f"{source_name}: bot user agent refused; fetched with browser user agent")
+    try:
+        return parse_entries(source_name, feed_url, content, keyword_filter)
+    except Exception as e:
+        log(f"Error parsing feed {source_name}: {e}")
+        return []
+
+
+FILTERS = {
+    None: None,
+    "public_sector": PUBLIC_SECTOR_KEYWORDS,
+    "institutional": INSTITUTIONAL_KEYWORDS,
+}
+
+
+def _title_key(title):
+    return re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+
+
+def collect(feeds=None):
+    """Fetch all active feeds and de-duplicate across them (by URL and headline)."""
+    harvested, seen_urls, seen_titles = [], set(), set()
+    for feed in feeds or active_feeds():
+        items = parse_feed(feed.name, feed.url, keyword_filter=FILTERS[feed.filter])
+        # Newest first, then cap so one noisy feed cannot dominate the prompt.
+        items.sort(key=lambda a: a.get("published") or "", reverse=True)
+        kept = 0
+        for item in items:
+            key = _title_key(item["title"])
+            if item["url"] in seen_urls or (key and key in seen_titles):
+                continue
+            if kept >= MAX_ITEMS_PER_FEED:
+                break
+            seen_urls.add(item["url"])
+            if key:
+                seen_titles.add(key)
+            harvested.append(item)
+            kept += 1
+    log(f"Total unique new articles: {len(harvested)}")
+    return harvested
+
 
 def run_ingestion():
-    # Dedicated institutional and specialized feeds (unfiltered at ingestion)
-    specialized_feeds = {
-        "CoinDesk": "https://www.coindesk.com/arc/outboundfeeds/rss/?outputType=xml",
-        "The Block RSS": "https://www.theblock.co/rss.xml",
-        "BIS Research": "https://www.bis.org/doclist/rss_all_categories.rss",
-        "Ledger Insights": "https://www.ledgerinsights.com/feed/"
-    }
-    
-    # Public sector and regulatory feeds (gated by institutional digital asset keywords)
-    regulatory_feeds = {
-        "BoE News": "https://www.bankofengland.co.uk/rss/news",
-        "BoE Publications": "https://www.bankofengland.co.uk/rss/publications",
-        "FCA Updates": "https://www.fca.org.uk/news/rss.xml",
-        "HM Treasury": "https://www.gov.uk/government/organisations/hm-treasury.atom",
-        "ECB Press": "https://www.ecb.europa.eu/rss/press.xml"
-    }
-    
-    harvested = []
-    for name, url in specialized_feeds.items():
-        harvested.extend(parse_feed(name, url))
-        
-    for name, url in regulatory_feeds.items():
-        harvested.extend(parse_feed(name, url, keyword_filter=PUBLIC_SECTOR_KEYWORDS))
-        
-    # Print clean JSON array to standard out for our Scout agent to capture
-    print(json.dumps(harvested, indent=2))
+    # Print clean JSON array to standard out for the orchestrator to capture
+    print(json.dumps(collect(), indent=2))
+
 
 if __name__ == "__main__":
     run_ingestion()
