@@ -1,38 +1,16 @@
 import os
 import sys
-import json
 import time
 import datetime
 import subprocess
 import smtplib
 import re
-import warnings
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Paths
-WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from common import WORKSPACE_ROOT, get_env_var, log_error
+
 OUTPUT_BRIEFING_PATH = os.path.join(WORKSPACE_ROOT, "pipeline", "output_briefing.md")
-ERROR_LOG_PATH = os.path.join(WORKSPACE_ROOT, "error_log.txt")
-
-def log_error(msg):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(f"[{timestamp}] ERROR: {msg}\n")
-    print(f"ERROR: {msg}", file=sys.stderr)
-
-# Helper to fetch environment variables, supporting fallback to Windows registry for local setups
-def get_env_var(name):
-    val = os.environ.get(name)
-    if not val and sys.platform == "win32":
-        try:
-            import winreg
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment")
-            val, _ = winreg.QueryValueEx(key, name)
-            winreg.CloseKey(key)
-        except Exception:
-            pass
-    return val
 
 # Verify all mandatory environment variables are set before proceeding
 def verify_environment():
@@ -48,67 +26,32 @@ def verify_environment():
         return False
     return True
 
+_H2_RE = re.compile(r"<h2>(.*?)</h2>", re.IGNORECASE | re.DOTALL)
+
+
+def wrap_section(raw_html, heading_keyword, css_class):
+    """Wrap the body of the first <h2> section whose title contains ``heading_keyword``.
+
+    Matching is case-insensitive and ignores numbering, so "## 1. Macro View" and
+    "## 2. MACRO VIEW" are both handled. The body runs to the next <h2> or the end.
+    """
+    headings = list(_H2_RE.finditer(raw_html))
+    for i, match in enumerate(headings):
+        if heading_keyword.lower() in match.group(1).lower():
+            body_start = match.end()
+            body_end = headings[i + 1].start() if i + 1 < len(headings) else len(raw_html)
+            return (raw_html[:body_start] + f'<div class="{css_class}">'
+                    + raw_html[body_start:body_end] + "</div>" + raw_html[body_end:])
+    return raw_html
+
+
 # HTML Newsletter Formatter
 def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
-    try:
-        import markdown
-    except ImportError:
-        print("Installing missing dependency: markdown...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "markdown"], check=True)
-        import markdown
+    import markdown
 
     raw_html = markdown.markdown(markdown_content)
-    
-    # Wrap Strategic Takeaways in an executive takeaways card
-    if "<h2>1. STRATEGIC TAKEAWAYS</h2>" in raw_html and "<h2>2. MACRO VIEW</h2>" in raw_html:
-        parts = raw_html.split("<h2>2. MACRO VIEW</h2>", 1)
-        takeaway_part = parts[0]
-        rest = "<h2>2. MACRO VIEW</h2>" + parts[1]
-        header_str = "<h2>1. STRATEGIC TAKEAWAYS</h2>"
-        h_idx = takeaway_part.find(header_str)
-        before_h = takeaway_part[:h_idx + len(header_str)]
-        after_h = takeaway_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="takeaways-card">' + after_h + '</div>' + rest
-
-    # Wrap Macro View in a synthesis card
-    if "<h2>2. MACRO VIEW</h2>" in raw_html and "<h2>3. CORE INSTITUTIONAL PILLARS</h2>" in raw_html:
-        parts = raw_html.split("<h2>3. CORE INSTITUTIONAL PILLARS</h2>", 1)
-        macro_part = parts[0]
-        rest = "<h2>3. CORE INSTITUTIONAL PILLARS</h2>" + parts[1]
-        header_str = "<h2>2. MACRO VIEW</h2>"
-        h_idx = macro_part.find(header_str)
-        before_h = macro_part[:h_idx + len(header_str)]
-        after_h = macro_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
-    elif "<h2>2. MACRO VIEW</h2>" in raw_html and "<h2>3. CORE PILLAR DEVELOPMENTS</h2>" in raw_html:
-        parts = raw_html.split("<h2>3. CORE PILLAR DEVELOPMENTS</h2>", 1)
-        macro_part = parts[0]
-        rest = "<h2>3. CORE PILLAR DEVELOPMENTS</h2>" + parts[1]
-        header_str = "<h2>2. MACRO VIEW</h2>"
-        h_idx = macro_part.find(header_str)
-        before_h = macro_part[:h_idx + len(header_str)]
-        after_h = macro_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
-    elif "<h2>1. MACRO VIEW</h2>" in raw_html and "<h2>2. CORE PILLAR DEVELOPMENTS</h2>" in raw_html:
-        # 4-section briefings
-        parts = raw_html.split("<h2>2. CORE PILLAR DEVELOPMENTS</h2>", 1)
-        synthesis_part = parts[0]
-        rest = "<h2>2. CORE PILLAR DEVELOPMENTS</h2>" + parts[1]
-        header_str = "<h2>1. MACRO VIEW</h2>"
-        h_idx = synthesis_part.find(header_str)
-        before_h = synthesis_part[:h_idx + len(header_str)]
-        after_h = synthesis_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
-    elif "<h2>1. MACRO VIEW</h2>" in raw_html and "<h2>2. CORE INSTITUTIONAL PILLARS</h2>" in raw_html:
-        # 4-section briefings with alternate pillar header
-        parts = raw_html.split("<h2>2. CORE INSTITUTIONAL PILLARS</h2>", 1)
-        synthesis_part = parts[0]
-        rest = "<h2>2. CORE INSTITUTIONAL PILLARS</h2>" + parts[1]
-        header_str = "<h2>1. MACRO VIEW</h2>"
-        h_idx = synthesis_part.find(header_str)
-        before_h = synthesis_part[:h_idx + len(header_str)]
-        after_h = synthesis_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
+    raw_html = wrap_section(raw_html, "STRATEGIC TAKEAWAYS", "takeaways-card")
+    raw_html = wrap_section(raw_html, "MACRO VIEW", "synthesis-card")
 
     css_styles = """
     body {
@@ -277,7 +220,7 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
     </div>
     <div class="footer">
       This is an automated intelligence briefing compiled by DA-INTEL-01.<br>
-      To modify subscription preferences or source endpoints, edit config.json.
+      Recipients are set via RECIPIENT_EMAIL; sources are configured in pipeline/ingestion.py.
     </div>
   </div>
 </body>
@@ -285,22 +228,18 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
 """
     return html_newsletter
 
-DEFAULT_RECIPIENTS = [
-    "sunilkandola87@gmail.com",
-    "sunil.kandola@lloydsbanking.com"
-]
-
-def parse_recipients(recipient_env):
-    if not recipient_env:
-        return list(DEFAULT_RECIPIENTS)
-    parts = re.split(r'[,;]', recipient_env)
+def parse_recipients(recipient_env, default=None):
+    """Split a comma/semicolon separated list; fall back to ``default`` (SMTP_USER)."""
+    parts = re.split(r'[,;]', recipient_env or "")
     recipients = [p.strip() for p in parts if p.strip()]
-    return recipients if recipients else list(DEFAULT_RECIPIENTS)
+    if recipients:
+        return recipients
+    return [default] if default else []
 
 # Email Delivery Layer (Multipart MIME)
 def send_email(subject, plain_body, html_body, recipients):
     if isinstance(recipients, str):
-        recipients = parse_recipients(recipients)
+        recipients = parse_recipients(recipients, default=get_env_var('SMTP_USER'))
         
     smtp_user = get_env_var('SMTP_USER')
     smtp_pass = get_env_var('SMTP_PASS')
@@ -414,8 +353,7 @@ summary: "Weekly synthesis of wholesale banking, CBDCs, RWAs, and digital asset 
         print("Email sending skipped due to missing environment variables.")
         sys.exit(0)
         
-    recipient_env = get_env_var('RECIPIENT_EMAIL')
-    recipients = parse_recipients(recipient_env)
+    recipients = parse_recipients(get_env_var('RECIPIENT_EMAIL'), default=get_env_var('SMTP_USER'))
         
     subject = f"Digital Asset Digest: {today_str}"
     html_content = convert_markdown_to_newsletter_html(subject, today_str, brief_content)

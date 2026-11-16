@@ -4,89 +4,124 @@ import json
 import subprocess
 import datetime
 import time
+
 from google import genai
 from google.genai import types
+from pydantic import ValidationError
 
-WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ERROR_LOG_PATH = os.path.join(WORKSPACE_ROOT, "error_log.txt")
+from common import WORKSPACE_ROOT, get_env_var, log_error
+from render import finalise_briefing
+from schema import StrategicAnalysis
 
-def generate_content_with_retry(client, model, contents, config=None, max_retries=4, initial_delay=3, fallback_models=None):
+DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_FALLBACK_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+]
+# HTTP statuses worth retrying on the same model.
+TRANSIENT_STATUS = {408, 429, 500, 502, 503, 504}
+# Statuses where another model may succeed but retrying this one will not.
+SWITCH_MODEL_STATUS = {400, 404}
+STATE_RETENTION_DAYS = 120
+
+
+def _error_status(exc):
+    """Best-effort HTTP status for an SDK exception (None for network errors)."""
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return code
+    status = getattr(exc, "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def get_fallback_models():
+    configured = get_env_var("GEMINI_FALLBACK_MODELS")
+    if configured:
+        return [m.strip() for m in configured.split(",") if m.strip()]
+    return list(DEFAULT_FALLBACK_MODELS)
+
+
+def generate_content_with_retry(client, model, contents, config=None, max_retries=4,
+                                initial_delay=3, fallback_models=None, sleep=time.sleep):
+    """Call Gemini with bounded retries and a model fallback chain.
+
+    - 408/429/5xx and network errors: exponential backoff on the same model,
+      then move to the next model.
+    - 400/404 (bad request for this model, model retired): next model at once.
+    - Anything else (401/403 auth, etc.): raise immediately - no other model
+      will fix bad credentials.
+    """
     if fallback_models is None:
-        fallback_models = [
-            "gemini-2.5-flash",
-            "gemini-3.5-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite"
-        ]
-        
-    models_to_try = [model]
-    for fm in fallback_models:
-        if fm not in models_to_try:
-            models_to_try.append(fm)
-            
+        fallback_models = get_fallback_models()
+
+    models_to_try = [model] + [m for m in fallback_models if m != model]
+    kwargs = {"config": config} if config else {}
+
     last_exception = None
     for current_model in models_to_try:
         delay = initial_delay
         for attempt in range(1, max_retries + 1):
             try:
-                if config:
-                    response = client.models.generate_content(
-                        model=current_model,
-                        contents=contents,
-                        config=config
-                    )
-                else:
-                    response = client.models.generate_content(
-                        model=current_model,
-                        contents=contents
-                    )
+                response = client.models.generate_content(
+                    model=current_model, contents=contents, **kwargs
+                )
                 if current_model != model:
                     print(f"Successfully generated content using fallback model: {current_model}")
                 return response
             except Exception as e:
                 last_exception = e
-                error_msg = str(e)
-                print(f"Model {current_model} (attempt {attempt}/{max_retries}) failed: {error_msg}")
-                
-                # If model is deprecated or not found (404), skip retries and switch immediately
-                if "404" in error_msg or "NOT_FOUND" in error_msg:
-                    print(f"Model {current_model} not found (404). Switching immediately to next fallback...")
+                status = _error_status(e)
+                print(f"Model {current_model} (attempt {attempt}/{max_retries}) failed "
+                      f"[status={status}]: {e}")
+
+                if status in SWITCH_MODEL_STATUS:
+                    print(f"Switching from {current_model} to next fallback model...")
                     break
-                    
-                is_transient = any(err_code in error_msg for err_code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "500"])
-                if is_transient and attempt < max_retries:
+                if status is not None and status not in TRANSIENT_STATUS:
+                    raise
+                if attempt < max_retries:
                     print(f"Retrying {current_model} in {delay}s...")
-                    time.sleep(delay)
+                    sleep(delay)
                     delay = min(delay * 2, 30)
-                elif is_transient and current_model != models_to_try[-1]:
-                    print(f"Switching to fallback model after retries exhausted on {current_model}...")
-                    break
-                else:
-                    if attempt == max_retries:
-                        break
-                    time.sleep(delay)
-                    delay = min(delay * 2, 30)
-                    
-    if last_exception:
-        raise last_exception
 
-def log_error(msg):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(f"[{timestamp}] ERROR: {msg}\n")
-    print(f"ERROR: {msg}", file=sys.stderr)
+    raise last_exception
 
-def get_env_var(name):
-    val = os.environ.get(name)
-    if not val and sys.platform == "win32":
-        try:
-            import winreg
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment")
-            val, _ = winreg.QueryValueEx(key, name)
-            winreg.CloseKey(key)
-        except Exception:
-            pass
-    return val
+
+def _strip_code_fences(text):
+    text = (text or "").strip()
+    if text.startswith("```json"):
+        text = text[7:]
+    elif text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    return text.strip()
+
+
+def parse_analysis(response):
+    """Turn a Gemini response into a validated StrategicAnalysis."""
+    parsed = getattr(response, "parsed", None)
+    if isinstance(parsed, StrategicAnalysis):
+        return parsed
+    text = _strip_code_fences(response.text)
+    try:
+        return StrategicAnalysis.model_validate_json(text)
+    except ValidationError:
+        start = text.find("{")
+        if start == -1:
+            raise
+        obj, _ = json.JSONDecoder().raw_decode(text[start:])
+        return StrategicAnalysis.model_validate(obj)
+
+
+def _json_config():
+    return types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=StrategicAnalysis,
+    )
+
 
 def run_strategist(client, model, articles):
     print("Executing Macro Strategist (Noise Gate & Categorisation)...")
@@ -137,55 +172,12 @@ Also analyse **Structural & Operational Pain Points** across:
 Also select **4-6 New High-Signal Targets for Tracking**:
 Dynamic, week-specific standout entities, pilots, or legislative bills directly emerging from this week's news with URL and 1-2 sentence institutional rationale.
 
-Return the result STRICTLY as a JSON object matching this structure (no markdown formatting blocks, no extra text):
-{{
-  "macro_view": [
-    {{
-      "headline": "Bold declarative statement...",
-      "detail": "1-2 sentences of supporting facts and systemic market plumbing/balance-sheet/liquidity implications."
-    }}
-  ],
-  "pillars": {{
-    "Banking Infrastructure & Commercial Rails": {{
-      "synthesis": "...",
-      "developments": [
-        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
-      ]
-    }},
-    "Institutional Asset Management & RWAs": {{
-      "synthesis": "...",
-      "developments": [
-        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
-      ]
-    }},
-    "Sovereign Infrastructure & CBDCs": {{
-      "synthesis": "...",
-      "developments": [
-        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
-      ]
-    }},
-    "Regulatory & Legal Frameworks": {{
-      "synthesis": "...",
-      "developments": [
-        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
-      ]
-    }},
-    "Frontier & Emerging Innovations": {{
-      "synthesis": "...",
-      "developments": [
-        {{ "title": "...", "source": "...", "url": "...", "details": "..." }}
-      ]
-    }}
-  }},
-  "structural_pain_points": {{
-    "interoperability_silos": "...",
-    "balance_sheet_and_liquidity_friction": "...",
-    "post_trade_plumbing_constraints": "..."
-  }},
-  "new_high_signal_targets": [
-    {{ "name": "...", "url": "...", "rationale": "..." }}
-  ]
-}}
+Output contract (the response schema is enforced; follow these content rules):
+- "pillars" is a list; each entry's "name" must be one of the five Core Pillars above. Omit a pillar entirely if it has no qualifying developments.
+- Every development "url" MUST be copied exactly from the "url" field of a raw feed article below. Never invent, shorten or alter URLs. If a development has no matching feed article, do not include it.
+- Every development "source" must be the "source" field of that feed article; "title" should be the article title.
+- For "new_high_signal_targets", reuse the feed article URL that introduced the target. If none exists, set "url" to an empty string.
+- Do not wrap the JSON in markdown fences.
 
 Raw feed articles:
 {json.dumps(articles, indent=2)}
@@ -193,113 +185,88 @@ Raw feed articles:
 
     try:
         response = generate_content_with_retry(
-            client=client,
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
+            client=client, model=model, contents=prompt, config=_json_config()
         )
-        text = response.text.strip()
-        if text.startswith("```json"):
-            text = text[7:]
-        elif text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-        
-        try:
-            return json.loads(text)
-        except Exception:
-            start = text.find("{")
-            if start != -1:
-                obj, _ = json.JSONDecoder().raw_decode(text[start:])
-                return obj
-            raise
+        return parse_analysis(response)
     except Exception as e:
         log_error(f"Macro Strategist API execution failed: {e}")
         return None
 
+EDITOR_PROSE_RULES = """
+1. Strict British English spelling (tokenised, tokenisation, utilised, prioritised, standardise, programmes, centre, synchronisation, optimisation).
+2. No AI fluff or hedging: never use phrases such as "appears to", "it is evident that", "underscored by", "it is worth noting", "a testament to", "delve". State operational facts plainly.
+3. Frame every point through institutional banking, treasury rails, balance-sheet liquidity, collateral mobility and market plumbing, for an audience of executives in systemic commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets and FMIs.
+4. Macro view headlines are bold, declarative statements (no trailing full stop needed); details are 1-2 tight sentences.
+5. Pillar syntheses are 1-2 sentences. Development details are one or two concise sentences on what happened and why it matters.
+6. Targets carry a 1-2 sentence rationale for why banks, treasuries or FMIs should track them.
+"""
+
+
 def run_editor(client, model, strategic_analysis):
-    print("Executing Chief Editor & QC (Briefing Compilation)...")
-    
+    """Polish prose in the analysis JSON. Layout is rendered deterministically later."""
+    print("Executing Chief Editor & QC (prose polish)...")
+
     prompt = f"""
 You are the Chief Editor for the Institutional Digital Asset Intelligence pipeline.
-Your audience consists of executive leaders and specialists in systemic commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets, and wholesale financial market infrastructure.
-Your job is to parse the strategic analysis JSON below and compile an executive, publication-ready Markdown briefing.
-
-Formatting Rules:
-1. DO NOT output a top-level H1 header (e.g. # Header). Start directly with H2 headers.
-2. Apply strict British English spelling (e.g., tokenised, tokenisation, utilised, prioritised, standardise, programmes, centre, synchronisation, optimisation).
-3. Embed clean, inline Markdown links back to the actual primary source URLs provided in the developments JSON wherever that development, project, or entity is mentioned. If a primary source URL is not present, use a Google Search query (formatted as an absolute URL starting with https://www.google.com/search?q=...). Every link must be absolute and start with http:// or https://. Never use relative links, local files, or placeholder/stub identifiers.
-4. No AI Fluff: Avoid hedging phrases like "appears to", "it is evident that", "underscored by". State the operational facts plainly.
-
-Editorial Lens & Weighting:
-- Frame developments through the lens of institutional banking, treasury rails, balance-sheet liquidity, collateral mobility, and market plumbing.
-- Highlight commercial bank money, tokenised deposits, UK public sector (Bank of England DSS/RTGS sync, HM Treasury), wholesale market utilities, and institutional stablecoin/treasury rails (e.g. Circle, Ripple RLUSD).
-
-Required Structural Layout (Strictly 4 Sections):
-
-## 1. MACRO VIEW
-[Provide 4-6 punchy bullet points. Each bullet must open with a **bold declarative statement** (the headline), followed by 1-2 sentences of supporting facts. State the fact and why it matters to market plumbing, balance sheets, or liquidity. Write in British English. Scannable and direct.]
-
-## 2. CORE PILLAR DEVELOPMENTS
-
-### Banking Infrastructure & Commercial Rails
-*[1-2 sentence executive synthesis paragraph from JSON on liquidity, capital velocity, and commercial banking impact.]*
-
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
-
-### Institutional Asset Management & RWAs
-*[1-2 sentence executive synthesis paragraph from JSON on collateral mobility, fund tokenisation, or secondary liquidity.]*
-
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
-
-### Sovereign Infrastructure & CBDCs
-*[1-2 sentence executive synthesis paragraph from JSON on central bank settlement, RTGS synchronisation, or sandbox initiatives.]*
-
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
-
-### Regulatory & Legal Frameworks
-*[1-2 sentence executive synthesis paragraph from JSON on jurisdictional compliance, stablecoin regimes, or supervisory clarity.]*
-
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
-
-[If Frontier & Emerging Innovations has developments in JSON, include this fifth sub-pillar]:
-### Frontier & Emerging Innovations
-*[1-2 sentence executive synthesis paragraph from JSON on technical innovation across digital assets.]*
-
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
-
-## 3. STRUCTURAL & OPERATIONAL PAIN POINTS
-* **Interoperability Silos:** [Analysis from JSON on where disparate networks, private ledgers, or stablecoin standards fail to bridge cleanly.]
-* **Balance Sheet & Liquidity Friction:** [Analysis from JSON on capital constraints, deposit disintermediation, parallel liquidity systems, or 24/7 liquidity buffer requirements.]
-* **Post-Trade Plumbing Constraints:** [Analysis from JSON on settlement bottlenecks, custodian friction, or legacy ledger synchronisation.]
-
-## 4. NEW HIGH-SIGNAL TARGETS FOR TRACKING
-* [**Target Name**](URL): [1-2 sentences explaining why institutions, corporate treasuries, or banks should track this specific target emerging from this week's developments.]
-[Include 4-6 dynamic targets from JSON.]
+Rewrite the prose fields of the strategic analysis JSON below to publication standard, following these rules:
+{EDITOR_PROSE_RULES}
+Hard constraints:
+- Return the SAME JSON structure with the SAME number of items in every list, in the SAME order.
+- Do NOT change any "url", "title", "source", pillar "name" or target "name" value. Copy them exactly.
+- Only rewrite: macro_view headline/detail, pillar synthesis, development details, structural_pain_points values, target rationale.
 
 Strategic Analysis JSON:
-{json.dumps(strategic_analysis, indent=2)}
+{strategic_analysis.model_dump_json(indent=2)}
 """
 
     try:
         response = generate_content_with_retry(
-            client=client,
-            model=model,
-            contents=prompt
+            client=client, model=model, contents=prompt, config=_json_config()
         )
-        return response.text
+        edited = parse_analysis(response)
     except Exception as e:
-        log_error(f"Chief Editor API execution failed: {e}")
+        log_error(f"Chief Editor API execution failed: {e}. Using unedited strategist prose.")
+        return strategic_analysis
+
+    merged = merge_editor_prose(strategic_analysis, edited)
+    if merged is None:
+        print("WARNING: Editor changed the analysis structure; using unedited strategist prose.",
+              file=sys.stderr)
+        return strategic_analysis
+    return merged
+
+
+def merge_editor_prose(original, edited):
+    """Take prose from ``edited`` but identity fields (urls, titles, names) from ``original``.
+
+    Returns None if the editor altered the shape, so the caller can fall back.
+    """
+    if (len(original.macro_view) != len(edited.macro_view)
+            or len(original.pillars) != len(edited.pillars)
+            or len(original.new_high_signal_targets) != len(edited.new_high_signal_targets)):
         return None
+    for o_p, e_p in zip(original.pillars, edited.pillars):
+        if o_p.name != e_p.name or len(o_p.developments) != len(e_p.developments):
+            return None
+
+    result = original.model_copy(deep=True)
+    for r, e in zip(result.macro_view, edited.macro_view):
+        r.headline, r.detail = e.headline, e.detail
+    for r_p, e_p in zip(result.pillars, edited.pillars):
+        r_p.synthesis = e_p.synthesis
+        for r_d, e_d in zip(r_p.developments, e_p.developments):
+            r_d.details = e_d.details
+    result.structural_pain_points = edited.structural_pain_points.model_copy()
+    for r, e in zip(result.new_high_signal_targets, edited.new_high_signal_targets):
+        r.rationale = e.rationale
+    return result
+
 
 def validate_and_normalize_links(markdown_content):
+    """Final safety net: rewrite any non-absolute markdown link to a search URL."""
     import re
     from urllib.parse import quote_plus
-    
+
     # Match markdown links: [text](url)
     link_pattern = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
     
@@ -319,8 +286,31 @@ def validate_and_normalize_links(markdown_content):
         
     return link_pattern.sub(replace_link, markdown_content)
 
+def prune_processed_urls(processed, now=None, retention_days=STATE_RETENTION_DAYS):
+    """Drop dedup entries older than the retention window.
+
+    RSS feeds only expose recent items, so URLs older than a few months can no
+    longer reappear; keeping them just grows the state file forever.
+    """
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    cutoff = now - datetime.timedelta(days=retention_days)
+    kept = {}
+    for url, ts in processed.items():
+        try:
+            seen = datetime.datetime.fromisoformat(ts)
+            if seen.tzinfo is None:
+                seen = seen.replace(tzinfo=datetime.timezone.utc)
+        except (TypeError, ValueError):
+            kept[url] = ts  # keep anything we can't parse rather than re-publish it
+            continue
+        if seen >= cutoff:
+            kept[url] = ts
+    return kept
+
+
 def update_system_state(raw_feed):
     state_path = os.path.join(WORKSPACE_ROOT, "system_state.json")
+    state = {"processed_urls": {}}
     if os.path.exists(state_path):
         try:
             with open(state_path, "r", encoding="utf-8") as f:
@@ -328,26 +318,27 @@ def update_system_state(raw_feed):
         except Exception as e:
             print(f"Warning: Failed to load existing system state: {e}. Reinitializing.")
             state = {"processed_urls": {}}
-    else:
-        state = {"processed_urls": {}}
-    
-    if "processed_urls" not in state:
-        state["processed_urls"] = {}
-        
-    import datetime
-    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    
+    state.setdefault("processed_urls", {})
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    timestamp = now.isoformat()
     for item in raw_feed:
         url = item.get("url")
         if url:
             state["processed_urls"][url] = timestamp
-            
+
+    before = len(state["processed_urls"])
+    state["processed_urls"] = prune_processed_urls(state["processed_urls"], now=now)
+    pruned = before - len(state["processed_urls"])
+
     try:
         with open(state_path, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
-        print(f"System state updated with {len(raw_feed)} new URLs and saved to {state_path}")
+        print(f"System state updated with {len(raw_feed)} new URLs "
+              f"({pruned} expired entries pruned) and saved to {state_path}")
     except Exception as e:
         log_error(f"Failed to save system state: {e}")
+
 
 def main():
     print("Pipeline orchestration run started...")
@@ -361,7 +352,7 @@ def main():
         sys.exit(1)
         
     client = genai.Client(api_key=gemini_key)
-    gemini_model = get_env_var("GEMINI_MODEL") or "gemini-2.5-flash"
+    gemini_model = get_env_var("GEMINI_MODEL") or DEFAULT_MODEL
     
     # Step 1: Run Ingestion
     print("Running Ingestion layer...")
@@ -401,25 +392,23 @@ def main():
     if not strategic_analysis:
         log_error("Macro Strategist failed to output analysis.")
         sys.exit(1)
-        
+
     analysis_path = os.path.join(WORKSPACE_ROOT, "shared_artifacts", "strategic_analysis.json")
     with open(analysis_path, "w", encoding="utf-8") as f:
-        json.dump(strategic_analysis, f, indent=2)
+        f.write(strategic_analysis.model_dump_json(indent=2))
     print(f"Strategic analysis successfully saved to {analysis_path}")
-    
-    # Step 3: Run Chief Editor
-    briefing = run_editor(client, gemini_model, strategic_analysis)
-    if not briefing:
-        log_error("Chief Editor failed to output briefing.")
-        sys.exit(1)
-        
+
+    # Step 3: Chief Editor polishes prose; layout and links are rendered deterministically
+    edited_analysis = run_editor(client, gemini_model, strategic_analysis)
+    allowed_urls = [a.get("url") for a in raw_feed if a.get("url")]
+    briefing = finalise_briefing(edited_analysis, allowed_urls)
     briefing = validate_and_normalize_links(briefing)
-        
+
     briefing_path = os.path.join(WORKSPACE_ROOT, "pipeline", "output_briefing.md")
     with open(briefing_path, "w", encoding="utf-8") as f:
         f.write(briefing)
     print(f"Briefing successfully compiled to {briefing_path}")
-    
+
     # Step 4: Run Publishing Layer
     print("Invoking Publishing layer...")
     publish_args = [sys.executable, os.path.join(WORKSPACE_ROOT, "pipeline", "publish.py")]

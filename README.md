@@ -22,18 +22,23 @@ graph TD
 1. **The Research Scout (`scout`)**
    - **Trigger**: Instantiated via scheduler or manually.
    - **Action**: Invokes `pipeline/ingestion.py` to scrape high-signal RSS feeds (CoinDesk, The Block, the Bank for International Settlements, Ledger Insights, the European Central Bank, and the Bank of England).
-   - **Enrichment**: Inspects articles for institutional programs (e.g. Project Agorá, mBridge, Regulated Liability Networks, Project Cedar) and gathers primary-source specification details via web search.
+   - **Feeds**: CoinDesk, The Block, BIS and Ledger Insights are ingested unfiltered; Bank of England, FCA, HM Treasury and ECB feeds are gated by an institutional digital-asset keyword list. Per-feed HTTP status and item counts are logged to stderr so a blocked or empty feed is visible in the run log.
    - **Output**: Writes combined raw/enriched feed items to `shared_artifacts/raw_enriched_feed.json`.
 
 2. **The Macro Strategist (`strategist`)**
    - **Trigger**: Fired immediately upon validation of the raw feed.
    - **Action**: Applies a strict institutional "Noise Gate" filter to remove retail speculative noise (spot prices, memecoins, consumer wallets, and retail volumes).
    - **Categorisation**: Organises approved developments into four core pillars and synthesises their impact on cross-border liquidity and capital efficiency.
+   - **Schema**: Gemini is called with a Pydantic `response_schema` (`pipeline/schema.py`), and the response is validated before use. Pillar names are an enum, and URLs must be copied from the ingested feed.
    - **Output**: Writes the structured payload to `shared_artifacts/strategic_analysis.json`.
 
 3. **The Chief Editor & QC (`editor`)**
    - **Trigger**: Fired immediately upon validation of the strategic analysis.
-   - **Action**: Compiles the final briefing in **strict British English** spelling (e.g., *tokenised*, *tokenisation*, *utilising*, *programmes*). Evaluates the brief against QC rules to remove generic AI fluff and hedging phrases.
+   - **Action**: Rewrites only the *prose* fields of the analysis JSON (British English, no hedging). Its output is merged back with URLs, titles and names taken from the strategist, so the editor cannot alter links. If the editor fails or changes the structure, the strategist prose is used.
+   - **Rendering & QC** (`pipeline/render.py`): The Markdown brief is rendered deterministically from the JSON, so the 4-section layout is fixed in code. Before rendering:
+     - any link not present in the ingested feed is replaced with a Google Search fallback, which stops hallucinated URLs from being published;
+     - `-ize`/`-yze` spellings in prose are converted to British `-ise`/`-yse` (source headlines and proper nouns are left verbatim);
+     - hedging phrases are flagged in the log.
    - **Output**: Writes the compiled briefing file to `pipeline/output_briefing.md`.
 
 4. **The External Publisher (`publisher`)**
@@ -52,8 +57,12 @@ da-intel-agentic/
 │       └── intelligence_engine.yml # GitHub Actions workflow scheduler
 ├── pipeline/
 │   ├── ingestion.py       # Base feed harvesting and parsing logic
+│   ├── common.py          # Shared env/logging helpers
+│   ├── schema.py          # Pydantic contract for the strategist/editor JSON
+│   ├── render.py          # Deterministic Markdown rendering, link allowlist, British English QC
 │   ├── publish.py         # SMTP transmission and Git push automation
 │   └── run_pipeline.py    # Main pipeline orchestrator (Gemini API sequence)
+├── tests/                 # unittest suite (run in CI)
 ├── shared_artifacts/      # Intermediate JSON payloads (gitignored)
 ├── .gitignore             # Local files exclusion configuration
 ├── requirements.txt       # Python dependencies for local & CI environments
@@ -75,7 +84,9 @@ Ensure the following variables are configured:
 - `GEMINI_API_KEY`: Your Google Gemini API key.
 - `SMTP_USER`: Your Gmail address.
 - `SMTP_PASS`: Your Gmail App Password (generated via Google Account settings).
-- `RECIPIENT_EMAIL`: The destination address for the briefing (defaults to `SMTP_USER` if not set).
+- `RECIPIENT_EMAIL`: Destination address(es) for the briefing, comma- or semicolon-separated (defaults to `SMTP_USER` if not set).
+- `GEMINI_MODEL` (Optional): Primary model (default `gemini-2.5-flash`).
+- `GEMINI_FALLBACK_MODELS` (Optional): Comma-separated fallback chain used when the primary model is unavailable. Rate-limit and server errors (429/5xx) are retried with backoff; auth errors (401/403) fail immediately.
 - `HUGO_DIR` (Optional): Path to your local Hugo site repository directory. If not set, defaults to a sibling folder named `sunilkandola-hugo`.
 
 ---
@@ -87,6 +98,13 @@ To execute the entire pipeline end-to-end (ingest, filter, write, email, and pub
 ```bash
 python pipeline/run_pipeline.py
 ```
+
+### Tests
+```bash
+pip install -r requirements.txt
+python -m unittest discover -s tests -v
+```
+Tests run on every push and pull request (`.github/workflows/tests.yml`), and again before each scheduled pipeline run.
 
 ### Dry Run (Testing End-to-End Delivery)
 To execute the entire pipeline, including scraping feeds and compiling the briefing locally via Gemini, without making SMTP connections or pushing commits to the live Hugo website:
@@ -113,6 +131,6 @@ To support remote execution, go to your repository settings (`Settings -> Secret
 ## Quality Control (QC) Directives
 All briefings generated by the engine must adhere to the following compliance rules:
 * **No AI Fluff**: Avoid vague, hedging phrases or generic AI-isms. Present facts directly.
-* **Primary Source Integrity**: Direct markdown links must use the actual article source URLs (e.g., CoinDesk, BIS, etc) propagated from the ingestion feed, rather than generic search links.
-* **Link Normalisation**: Malformed, relative or placeholder links are automatically intercepted and normalised to safe, absolute Google Search query URLs to prevent local 404 errors on the Hugo site or email template.
-* **Strict British English**: Americanised variants (e.g. *-ize*, *-ization*, *-ized*) are strictly banned.
+* **Primary Source Integrity** *(enforced in code)*: Every link in the brief must be a URL from this run's ingested feed. Anything else, including plausible-looking but invented URLs, is replaced with an absolute Google Search query URL.
+* **Strict British English** *(enforced in code for prose)*: `-ize`/`-ization`/`-yze` variants are converted automatically. Quoted source headlines are left as published.
+* **Deduplication state**: `system_state.json` records processed URLs and is committed back by the scheduled workflow. Entries older than 120 days are pruned automatically, since RSS feeds no longer serve items that old.

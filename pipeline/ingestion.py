@@ -2,7 +2,6 @@ import os
 import sys
 import json
 import requests
-import re
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import warnings
@@ -30,7 +29,9 @@ def parse_feed(source_name, feed_url, keyword_filter=None):
     articles = []
     try:
         r = requests.get(feed_url, headers=HEADERS, timeout=15)
-        if r.status_code != 200: return articles
+        if r.status_code != 200:
+            print(f"[ingestion] {source_name}: HTTP {r.status_code} - feed skipped", file=sys.stderr)
+            return articles
         soup = BeautifulSoup(r.content, 'html.parser')
         
         # Support both RSS 2.0 (<item>) and Atom 1.0 (<entry>)
@@ -40,6 +41,7 @@ def parse_feed(source_name, feed_url, keyword_filter=None):
             items = soup.find_all('entry')
             is_atom = True
 
+        seen_new = 0
         for item in items:
             title = item.find('title').get_text(strip=True) if item.find('title') else ""
             
@@ -80,19 +82,21 @@ def parse_feed(source_name, feed_url, keyword_filter=None):
                     continue
 
             if link and link not in state.get("processed_urls", {}):
+                seen_new += 1
                 articles.append({
                     "title": title,
                     "url": link,
                     "source": source_name,
                     "content": clean_content
                 })
+        print(f"[ingestion] {source_name}: {len(items)} items in feed, {seen_new} new after filtering",
+              file=sys.stderr)
+        if not items:
+            print(f"[ingestion] WARNING: {source_name} returned no items - check the feed URL "
+                  f"or whether the site is blocking the client", file=sys.stderr)
     except Exception as e:
-        print(f"Error parsing feed {source_name}: {e}", file=sys.stderr)
-        pass
+        print(f"[ingestion] Error parsing feed {source_name}: {e}", file=sys.stderr)
     return articles
-
-def parse_rss_feed(source_name, feed_url, keyword_filter=None):
-    return parse_feed(source_name, feed_url, keyword_filter)
 
 # Institutional Digital Asset keywords for filtering general regulator feeds
 PUBLIC_SECTOR_KEYWORDS = [
