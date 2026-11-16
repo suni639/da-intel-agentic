@@ -11,7 +11,8 @@ from pydantic import ValidationError
 
 from common import WORKSPACE_ROOT, get_env_var, log_error
 from enrich import evidence_for_prompt, gather_evidence
-from render import HEDGE_PHRASES, JARGON_SUGGESTIONS, finalise_briefing, find_hedging, prose_text
+from render import (HEDGE_PHRASES, JARGON_SUGGESTIONS, MAX_HEADLINE_WORDS, finalise_briefing,
+                    find_hedging, long_headlines, prose_text)
 from schema import StrategicAnalysis
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -351,15 +352,23 @@ def run_editor(client, model, strategic_analysis, evidence_block=None, max_revis
         current = merged
 
         offending = find_hedging(prose_text(current))
-        if not offending:
+        too_long = long_headlines(current)
+        if not offending and not too_long:
             return current
-        print(f"WARNING: editor draft {revision + 1} still uses banned phrases: {', '.join(offending)}",
-              file=sys.stderr)
-        hints = "; ".join(f'"{p}" -> {JARGON_SUGGESTIONS[p]}' for p in offending if p in JARGON_SUGGESTIONS)
-        extra = ("\nRevision request: the previous draft (below) still used these banned phrases: "
-                 + ", ".join(offending)
-                 + ". Rewrite every sentence containing them in plain, specific English."
-                 + (f" Suggested replacements: {hints}." if hints else "") + "\n")
+        extra = "\nRevision request:"
+        if offending:
+            print(f"WARNING: editor draft {revision + 1} still uses banned phrases: {', '.join(offending)}",
+                  file=sys.stderr)
+            hints = "; ".join(f'"{p}" -> {JARGON_SUGGESTIONS[p]}' for p in offending if p in JARGON_SUGGESTIONS)
+            extra += (" the previous draft (below) still used these banned phrases: " + ", ".join(offending)
+                      + ". Rewrite every sentence containing them in plain, specific English."
+                      + (f" Suggested replacements: {hints}." if hints else ""))
+        if too_long:
+            print(f"WARNING: editor draft {revision + 1} has {len(too_long)} macro headline(s) over "
+                  f"{MAX_HEADLINE_WORDS} words", file=sys.stderr)
+            extra += (f" These macro view headlines exceed {MAX_HEADLINE_WORDS} words; shorten each to at most "
+                      f"{MAX_HEADLINE_WORDS} words in sentence case: " + " | ".join(too_long) + ".")
+        extra += "\n"
     return current
 
 

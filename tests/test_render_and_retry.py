@@ -101,7 +101,7 @@ class TestBritishEnglish(unittest.TestCase):
         self.assertEqual(to_british(text), text)
 
     def test_hedging_detected(self):
-        self.assertEqual(find_hedging("It is evident that rails matter."), ["it is evident that"])
+        self.assertEqual(find_hedging("It is evident that settlement matters."), ["it is evident that"])
 
 
 class TestArticleIdStripping(unittest.TestCase):
