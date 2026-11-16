@@ -1,38 +1,17 @@
+import json
 import os
 import sys
-import json
 import time
 import datetime
 import subprocess
 import smtplib
 import re
-import warnings
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Paths
-WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from common import WORKSPACE_ROOT, get_env_var, log_error
+
 OUTPUT_BRIEFING_PATH = os.path.join(WORKSPACE_ROOT, "pipeline", "output_briefing.md")
-ERROR_LOG_PATH = os.path.join(WORKSPACE_ROOT, "error_log.txt")
-
-def log_error(msg):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(f"[{timestamp}] ERROR: {msg}\n")
-    print(f"ERROR: {msg}", file=sys.stderr)
-
-# Helper to fetch environment variables, supporting fallback to Windows registry for local setups
-def get_env_var(name):
-    val = os.environ.get(name)
-    if not val and sys.platform == "win32":
-        try:
-            import winreg
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment")
-            val, _ = winreg.QueryValueEx(key, name)
-            winreg.CloseKey(key)
-        except Exception:
-            pass
-    return val
 
 # Verify all mandatory environment variables are set before proceeding
 def verify_environment():
@@ -48,67 +27,32 @@ def verify_environment():
         return False
     return True
 
+_H2_RE = re.compile(r"<h2>(.*?)</h2>", re.IGNORECASE | re.DOTALL)
+
+
+def wrap_section(raw_html, heading_keyword, css_class):
+    """Wrap the body of the first <h2> section whose title contains ``heading_keyword``.
+
+    Matching is case-insensitive and ignores numbering, so "## 1. Macro View" and
+    "## 2. MACRO VIEW" are both handled. The body runs to the next <h2> or the end.
+    """
+    headings = list(_H2_RE.finditer(raw_html))
+    for i, match in enumerate(headings):
+        if heading_keyword.lower() in match.group(1).lower():
+            body_start = match.end()
+            body_end = headings[i + 1].start() if i + 1 < len(headings) else len(raw_html)
+            return (raw_html[:body_start] + f'<div class="{css_class}">'
+                    + raw_html[body_start:body_end] + "</div>" + raw_html[body_end:])
+    return raw_html
+
+
 # HTML Newsletter Formatter
 def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
-    try:
-        import markdown
-    except ImportError:
-        print("Installing missing dependency: markdown...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "markdown"], check=True)
-        import markdown
+    import markdown
 
     raw_html = markdown.markdown(markdown_content)
-    
-    # Wrap Strategic Takeaways in an executive takeaways card
-    if "<h2>1. STRATEGIC TAKEAWAYS</h2>" in raw_html and "<h2>2. MACRO VIEW</h2>" in raw_html:
-        parts = raw_html.split("<h2>2. MACRO VIEW</h2>", 1)
-        takeaway_part = parts[0]
-        rest = "<h2>2. MACRO VIEW</h2>" + parts[1]
-        header_str = "<h2>1. STRATEGIC TAKEAWAYS</h2>"
-        h_idx = takeaway_part.find(header_str)
-        before_h = takeaway_part[:h_idx + len(header_str)]
-        after_h = takeaway_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="takeaways-card">' + after_h + '</div>' + rest
-
-    # Wrap Macro View in a synthesis card
-    if "<h2>2. MACRO VIEW</h2>" in raw_html and "<h2>3. CORE INSTITUTIONAL PILLARS</h2>" in raw_html:
-        parts = raw_html.split("<h2>3. CORE INSTITUTIONAL PILLARS</h2>", 1)
-        macro_part = parts[0]
-        rest = "<h2>3. CORE INSTITUTIONAL PILLARS</h2>" + parts[1]
-        header_str = "<h2>2. MACRO VIEW</h2>"
-        h_idx = macro_part.find(header_str)
-        before_h = macro_part[:h_idx + len(header_str)]
-        after_h = macro_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
-    elif "<h2>2. MACRO VIEW</h2>" in raw_html and "<h2>3. CORE PILLAR DEVELOPMENTS</h2>" in raw_html:
-        parts = raw_html.split("<h2>3. CORE PILLAR DEVELOPMENTS</h2>", 1)
-        macro_part = parts[0]
-        rest = "<h2>3. CORE PILLAR DEVELOPMENTS</h2>" + parts[1]
-        header_str = "<h2>2. MACRO VIEW</h2>"
-        h_idx = macro_part.find(header_str)
-        before_h = macro_part[:h_idx + len(header_str)]
-        after_h = macro_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
-    elif "<h2>1. MACRO VIEW</h2>" in raw_html and "<h2>2. CORE PILLAR DEVELOPMENTS</h2>" in raw_html:
-        # 4-section briefings
-        parts = raw_html.split("<h2>2. CORE PILLAR DEVELOPMENTS</h2>", 1)
-        synthesis_part = parts[0]
-        rest = "<h2>2. CORE PILLAR DEVELOPMENTS</h2>" + parts[1]
-        header_str = "<h2>1. MACRO VIEW</h2>"
-        h_idx = synthesis_part.find(header_str)
-        before_h = synthesis_part[:h_idx + len(header_str)]
-        after_h = synthesis_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
-    elif "<h2>1. MACRO VIEW</h2>" in raw_html and "<h2>2. CORE INSTITUTIONAL PILLARS</h2>" in raw_html:
-        # 4-section briefings with alternate pillar header
-        parts = raw_html.split("<h2>2. CORE INSTITUTIONAL PILLARS</h2>", 1)
-        synthesis_part = parts[0]
-        rest = "<h2>2. CORE INSTITUTIONAL PILLARS</h2>" + parts[1]
-        header_str = "<h2>1. MACRO VIEW</h2>"
-        h_idx = synthesis_part.find(header_str)
-        before_h = synthesis_part[:h_idx + len(header_str)]
-        after_h = synthesis_part[h_idx + len(header_str):]
-        raw_html = before_h + '<div class="synthesis-card">' + after_h + '</div>' + rest
+    raw_html = wrap_section(raw_html, "STRATEGIC TAKEAWAYS", "takeaways-card")
+    raw_html = wrap_section(raw_html, "MACRO VIEW", "synthesis-card")
 
     css_styles = """
     body {
@@ -178,7 +122,7 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
       font-size: 14px;
       color: #475569;
     }
-    .content p em {
+    .content > p > em:only-child {
       display: block;
       font-style: normal;
       background-color: #f8fafc;
@@ -277,7 +221,7 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
     </div>
     <div class="footer">
       This is an automated intelligence briefing compiled by DA-INTEL-01.<br>
-      To modify subscription preferences or source endpoints, edit config.json.
+      Recipients are set via RECIPIENT_EMAIL; sources are configured in pipeline/ingestion.py.
     </div>
   </div>
 </body>
@@ -285,22 +229,18 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
 """
     return html_newsletter
 
-DEFAULT_RECIPIENTS = [
-    "sunilkandola87@gmail.com",
-    "sunil.kandola@lloydsbanking.com"
-]
-
-def parse_recipients(recipient_env):
-    if not recipient_env:
-        return list(DEFAULT_RECIPIENTS)
-    parts = re.split(r'[,;]', recipient_env)
+def parse_recipients(recipient_env, default=None):
+    """Split a comma/semicolon separated list; fall back to ``default`` (SMTP_USER)."""
+    parts = re.split(r'[,;]', recipient_env or "")
     recipients = [p.strip() for p in parts if p.strip()]
-    return recipients if recipients else list(DEFAULT_RECIPIENTS)
+    if recipients:
+        return recipients
+    return [default] if default else []
 
 # Email Delivery Layer (Multipart MIME)
 def send_email(subject, plain_body, html_body, recipients):
     if isinstance(recipients, str):
-        recipients = parse_recipients(recipients)
+        recipients = parse_recipients(recipients, default=get_env_var('SMTP_USER'))
         
     smtp_user = get_env_var('SMTP_USER')
     smtp_pass = get_env_var('SMTP_PASS')
@@ -337,30 +277,39 @@ def send_email(subject, plain_body, html_body, recipients):
             else:
                 return False
 
-def main():
-    dry_run = "--dry-run" in sys.argv
-    
-    print(f"Publishing script run started at: {datetime.datetime.now().isoformat()}")
-    
-    if not os.path.exists(OUTPUT_BRIEFING_PATH):
-        log_error(f"Briefing file not found at {OUTPUT_BRIEFING_PATH}. Aborting publishing.")
-        sys.exit(1)
-        
-    with open(OUTPUT_BRIEFING_PATH, "r", encoding="utf-8") as f:
-        brief_content = f.read()
-        
-    today_str = datetime.date.today().isoformat()
-    
-    # 1. Hugo Site Publishing
+PUBLISH_RESULT_PATH = os.path.join(WORKSPACE_ROOT, "shared_artifacts", "publish_result.json")
+
+# Channel outcomes
+OK, FAILED, SKIPPED, DRY_RUN = "ok", "failed", "skipped", "dry-run"
+
+
+def channels_required():
+    """In CI every channel must be configured; a missing one is a failure, not a skip."""
+    return (get_env_var("PUBLISH_REQUIRE_ALL_CHANNELS") or "").lower() in ("1", "true", "yes")
+
+
+def _git(args, cwd):
+    return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True)
+
+
+def publish_hugo(brief_content, today_str, dry_run):
     hugo_dir_env = get_env_var("HUGO_DIR")
-    if hugo_dir_env:
-        hugo_dir = os.path.abspath(hugo_dir_env)
-    else:
-        hugo_dir = os.path.join(os.path.dirname(WORKSPACE_ROOT), "sunilkandola-hugo")
+    hugo_dir = (os.path.abspath(hugo_dir_env) if hugo_dir_env
+                else os.path.join(os.path.dirname(WORKSPACE_ROOT), "sunilkandola-hugo"))
     hugo_content_dir = os.path.join(hugo_dir, "content", "intel")
-    brief_filename = f"weekly_brief_{today_str}.md"
-    brief_filepath = os.path.join(hugo_content_dir, brief_filename)
-    
+    brief_filepath = os.path.join(hugo_content_dir, f"weekly_brief_{today_str}.md")
+
+    if not os.path.exists(hugo_dir):
+        msg = f"Hugo website directory not found at {hugo_dir}."
+        if channels_required():
+            log_error(msg)
+            return FAILED
+        print(msg + " Skipping website publish.")
+        return SKIPPED
+    if dry_run:
+        print(f"[Dry-run] Would write post to {brief_filepath}")
+        return DRY_RUN
+
     front_matter = f"""---
 title: "Digital Asset Digest: {datetime.date.today().strftime('%d %B %Y')}"
 date: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S+00:00')}
@@ -371,65 +320,91 @@ summary: "Weekly synthesis of wholesale banking, CBDCs, RWAs, and digital asset 
 ---
 
 """
-    
-    if os.path.exists(hugo_dir):
-        print(f"Hugo site folder found at {hugo_dir}.")
-        if dry_run:
-            print(f"[Dry-run] Would write post to {brief_filepath}")
-        else:
-            try:
-                os.makedirs(hugo_content_dir, exist_ok=True)
-                with open(brief_filepath, "w", encoding="utf-8") as f:
-                    f.write(front_matter + brief_content)
-                print(f"Brief written to Hugo content directory: {brief_filepath}")
-                
-                # Git Auto-Publish
-                if os.path.exists(os.path.join(hugo_dir, ".git")):
-                    print("Committing and pushing to Hugo repository...")
-                    subprocess.run(["git", "pull", "--rebase"], cwd=hugo_dir, capture_output=True, text=True)
-                    subprocess.run(["git", "add", "content/intel/"], cwd=hugo_dir, check=True)
-                    status_res = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=hugo_dir)
-                    if status_res.returncode != 0:
-                        subprocess.run(["git", "commit", "-m", f"Auto-publish weekly brief {today_str}"], cwd=hugo_dir, check=True)
-                        push_res = subprocess.run(["git", "push"], cwd=hugo_dir, capture_output=True, text=True)
-                        if push_res.returncode != 0:
-                            # Attempt rebase and push once more if remote had updates
-                            subprocess.run(["git", "pull", "--rebase"], cwd=hugo_dir, capture_output=True, text=True)
-                            push_res = subprocess.run(["git", "push"], cwd=hugo_dir, capture_output=True, text=True)
-                        if push_res.returncode == 0:
-                            print("Successfully pushed to Hugo remote repository.")
-                        else:
-                            log_error(f"Git push failed: {push_res.stderr.strip()}")
-                    else:
-                        print("No changes to commit in Hugo site.")
-                else:
-                    print("Hugo Git repository not found. Skipping auto-publish push.")
-            except Exception as e:
-                log_error(f"Failed to publish to Hugo site: {e}")
-    else:
-        print(f"Hugo website directory not found at {hugo_dir}. Skipping website publish.")
+    try:
+        os.makedirs(hugo_content_dir, exist_ok=True)
+        with open(brief_filepath, "w", encoding="utf-8") as f:
+            f.write(front_matter + brief_content)
+        print(f"Brief written to Hugo content directory: {brief_filepath}")
 
-    # 2. Email Delivery
+        if not os.path.exists(os.path.join(hugo_dir, ".git")):
+            print("Hugo directory is not a Git repository; post written locally only.")
+            return OK
+
+        print("Committing and pushing to Hugo repository...")
+        _git(["pull", "--rebase"], hugo_dir)
+        _git(["add", "content/intel/"], hugo_dir)
+        if _git(["diff", "--cached", "--quiet"], hugo_dir).returncode == 0:
+            print("No changes to commit in Hugo site (already published).")
+            return OK
+        commit = _git(["commit", "-m", f"Auto-publish weekly brief {today_str}"], hugo_dir)
+        if commit.returncode != 0:
+            log_error(f"Hugo git commit failed: {commit.stderr.strip()}")
+            return FAILED
+        push = _git(["push"], hugo_dir)
+        if push.returncode != 0:
+            _git(["pull", "--rebase"], hugo_dir)  # remote moved on; retry once
+            push = _git(["push"], hugo_dir)
+        if push.returncode != 0:
+            log_error(f"Hugo git push failed: {push.stderr.strip()}")
+            return FAILED
+        print("Successfully pushed to Hugo remote repository.")
+        return OK
+    except Exception as e:
+        log_error(f"Failed to publish to Hugo site: {e}")
+        return FAILED
+
+
+def publish_email(brief_content, today_str, dry_run):
     if not verify_environment():
+        if channels_required():
+            return FAILED
         print("Email sending skipped due to missing environment variables.")
-        sys.exit(0)
-        
-    recipient_env = get_env_var('RECIPIENT_EMAIL')
-    recipients = parse_recipients(recipient_env)
-        
+        return SKIPPED
+
+    recipients = parse_recipients(get_env_var('RECIPIENT_EMAIL'), default=get_env_var('SMTP_USER'))
     subject = f"Digital Asset Digest: {today_str}"
     html_content = convert_markdown_to_newsletter_html(subject, today_str, brief_content)
-    
+
     if dry_run:
         print(f"[Dry-run] Would send email to {', '.join(recipients)} via SMTP server smtp.gmail.com")
         print("HTML payload structure checked successfully.")
-    else:
-        email_success = send_email(subject, brief_content, html_content, recipients)
-        if email_success:
-            print(f"Email delivered successfully to {len(recipients)} recipient(s).")
-        else:
-            log_error("Email delivery failed.")
-            sys.exit(1)
+        return DRY_RUN
+    if send_email(subject, brief_content, html_content, recipients):
+        print(f"Email delivered successfully to {len(recipients)} recipient(s).")
+        return OK
+    log_error("Email delivery failed.")
+    return FAILED
+
+
+def write_result(result, path=None):
+    path = path or PUBLISH_RESULT_PATH
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2)
+
+
+def main():
+    dry_run = "--dry-run" in sys.argv
+    print(f"Publishing script run started at: {datetime.datetime.now().isoformat()}")
+
+    if not os.path.exists(OUTPUT_BRIEFING_PATH):
+        log_error(f"Briefing file not found at {OUTPUT_BRIEFING_PATH}. Aborting publishing.")
+        write_result({"hugo": FAILED, "email": FAILED})
+        sys.exit(1)
+
+    with open(OUTPUT_BRIEFING_PATH, "r", encoding="utf-8") as f:
+        brief_content = f.read()
+    today_str = datetime.date.today().isoformat()
+
+    # Each channel is attempted independently; one failing never blocks the other.
+    result = {
+        "hugo": publish_hugo(brief_content, today_str, dry_run),
+        "email": publish_email(brief_content, today_str, dry_run),
+    }
+    write_result(result)
+    print(f"Publish result: {result}")
+    sys.exit(1 if FAILED in result.values() else 0)
+
 
 if __name__ == '__main__':
     main()

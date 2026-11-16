@@ -6,6 +6,11 @@ on:
     - cron: '0 2 * * 1'
   workflow_dispatch:
     # Allows manual execution from the GitHub Actions UI
+    inputs:
+      dry_run:
+        description: 'Dry run: build the brief but skip email, Hugo push and state commit'
+        type: boolean
+        default: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -52,7 +57,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 google-genai markdown
+          pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Load pipeline state
+        run: bash .github/scripts/load_state.sh
 
       - name: Check repository secrets
         run: |
@@ -69,26 +80,30 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          # In CI a missing Hugo checkout or SMTP secret is a failure, not a silent skip.
+          PUBLISH_REQUIRE_ALL_CHANNELS: 'true'
+          DRY_RUN_FLAG: ${{ inputs.dry_run && '--dry-run' || '' }}
         run: |
           set -o pipefail
-          python pipeline/run_pipeline.py 2>&1 | tee pipeline_output.log
+          echo "Dry run flag: '${DRY_RUN_FLAG}'"
+          python pipeline/run_pipeline.py $DRY_RUN_FLAG 2>&1 | tee pipeline_output.log
 
-      - name: Commit and push updated system state
+      - name: Show dry-run brief in job summary
+        if: ${{ always() && inputs.dry_run }}
         run: |
-          # Commit and push only if system_state.json exists and has changes
-          if [ -f system_state.json ]; then
-            echo "system_state.json found. Staging..."
-            # Use force add because system_state.json is listed in .gitignore
-            git add --force system_state.json
-            if ! git diff --cached --quiet; then
-              git commit -m "chore: update system state [skip ci]"
-              git push origin HEAD:main
-            else
-              echo "No changes to commit in system_state.json"
-            fi
+          if [ -f pipeline/output_briefing.md ]; then
+            { echo "# Dry-run brief"; echo; cat pipeline/output_briefing.md; } >> "$GITHUB_STEP_SUMMARY"
+            cat pipeline/output_briefing.md
           else
-            echo "system_state.json does not exist. Skipping commit."
+            echo "No briefing was produced."
           fi
+
+      - name: Save pipeline state
+        # Runs even if publishing partly failed: state is only written when the
+        # brief reached at least one channel, and must be kept to avoid repeats.
+        # Only real runs on main may write state.
+        if: ${{ !cancelled() && !inputs.dry_run && github.ref == 'refs/heads/main' }}
+        run: bash .github/scripts/save_state.sh
 
       - name: Upload pipeline logs
         if: always()
@@ -98,3 +113,6 @@ jobs:
           path: |
             main-repo/pipeline_output.log
             main-repo/error_log.txt
+            main-repo/pipeline/output_briefing.md
+            main-repo/shared_artifacts/strategic_analysis.json
+            main-repo/shared_artifacts/publish_result.json

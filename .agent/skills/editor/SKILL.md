@@ -8,6 +8,8 @@ version: 1.0.0
 Synthesise strategic inputs into an executive market intelligence briefing calibrated for senior leadership across commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets, and financial market infrastructure (FMIs).
 
 # Execution Directives
+> **Automated pipeline note:** In `pipeline/run_pipeline.py` the editor only rewrites prose fields of the JSON. The layout below is rendered in code by `pipeline/render.py`, which also enforces the link allowlist and British spelling. Keep the two in sync if you change the section structure.
+
 1. Parse the structured data inside `shared_artifacts/strategic_analysis.json`.
 2. Structure the document sections exactly according to the 4-section output framework provided below. Do not output a top-level H1 header.
 3. Apply absolute adherence to **British English** spelling protocols (e.g., *tokenised*, *tokenisation*, *prioritised*, *decentralised*, *utilising*, *programmes*, *centre*, *licences*, *synchronisation*).
