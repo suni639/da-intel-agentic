@@ -117,14 +117,14 @@ class TestRender(unittest.TestCase):
     def test_layout_and_links(self):
         analysis = StrategicAnalysis.model_validate(sample_payload())
         md = finalise_briefing(analysis, ALLOWED)
-        self.assertTrue(md.startswith("## 1. MACRO VIEW"))
-        for header in ["## 2. CORE PILLAR DEVELOPMENTS", "## 3. STRUCTURAL & OPERATIONAL PAIN POINTS",
-                       "## 4. NEW HIGH-SIGNAL TARGETS FOR TRACKING"]:
+        self.assertTrue(md.startswith("## The week in brief"))
+        for header in ["## What happened", "## What is holding things back", "## Worth watching",
+                       "* **Separate networks that don't connect:**"]:
             self.assertIn(header, md)
         # Fixed pillar order: Banking before Sovereign regardless of input order
-        self.assertLess(md.index("### Banking Infrastructure"), md.index("### Sovereign Infrastructure"))
+        self.assertLess(md.index("### Banks and payments"), md.index("### Central banks and public infrastructure"))
         # Empty pillars are omitted
-        self.assertNotIn("### Frontier", md)
+        self.assertNotIn("### New technology", md)
         # Brackets in titles are escaped so the link is not broken
         self.assertIn("[Fnality \\[GBP\\] launch](https://www.ledgerinsights.com/fnality/)", md)
         # Prose normalised to British English, titles untouched
@@ -143,7 +143,7 @@ class TestRender(unittest.TestCase):
             self.assertNotIn(banned, html)
         self.assertNotRegex(html, r"background:#(?!ffffff)")
         self.assertIn("16 November 2026", html)
-        self.assertRegex(html, r'<h2 style="[^"]+">1\. MACRO VIEW</h2>')
+        self.assertRegex(html, r'<h2 style="[^"]+">The week in brief</h2>')
         self.assertRegex(html, r'<a style="[^"]+" href="https://www\.bankofengland\.co\.uk/news/dss">')
         # Pillar synthesis is a normal paragraph, not an italic callout
         self.assertNotIn("<em", html.split("Central banks prioritise synchronisation")[0][-40:])

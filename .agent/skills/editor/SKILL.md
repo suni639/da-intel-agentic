@@ -1,66 +1,57 @@
 ---
 name: editor
-description: Compiles curated financial intelligence into a production-ready Markdown report, utilizing strict British English and a formal analytical tone.
-version: 1.0.0
+description: Fact-checks and rewrites the strategist's analysis into a plain-English executive brief in British English. Layout, links and spelling are enforced in code.
+version: 2.0.0
 ---
 
 # Goal
-Synthesise strategic inputs into an executive market intelligence briefing calibrated for senior leadership across commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets, and financial market infrastructure (FMIs).
+Turn the strategist's structured analysis into a brief that a busy senior banker can read in five minutes: plain English, concrete facts, no corporate jargon. Readers work in commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets and financial market infrastructure.
 
-# Execution Directives
-> **Automated pipeline note:** In `pipeline/run_pipeline.py` the editor only rewrites prose fields of the JSON. The layout below is rendered in code by `pipeline/render.py`, which also enforces the link allowlist and British spelling. Keep the two in sync if you change the section structure.
+# How it runs in the pipeline
+The editor does **not** write Markdown or choose the layout. In `pipeline/run_pipeline.py` it receives the analysis JSON plus an evidence block (headline, publisher and an excerpt of each cited article), and rewrites only the prose fields. Everything else is done in code:
 
-1. Parse the structured data inside `shared_artifacts/strategic_analysis.json`.
-2. Structure the document sections exactly according to the 4-section output framework provided below. Do not output a top-level H1 header.
-3. Apply absolute adherence to **British English** spelling protocols (e.g., *tokenised*, *tokenisation*, *prioritised*, *decentralised*, *utilising*, *programmes*, *centre*, *licences*, *synchronisation*).
-4. Embed clean inline Markdown links back to primary sources or fallback Google Search URLs for every project, institution, or initiative mentioned. All links must be absolute (starting with `http://` or `https://`).
-5. **Institutional Banking & FMI Lens:** Frame every development through concrete operational implications: deposit stickiness, intraday liquidity, collateral mobility (gilts/treasuries), 24/7 payment rails, and ledger interoperability.
+| Concern | Where it is handled |
+|---|---|
+| Section layout and titles | `pipeline/render.py` (`SECTION_TITLES`, `PILLAR_TITLES`, `PAIN_POINT_LABELS`) |
+| Links, titles, publishers | Filled from the feed by article id; any link not from the feed is replaced (`render.py`) |
+| British spelling, a few safe word swaps (utilise -> use) | `render.py` |
+| Sentence-case headlines | `render.py` |
+| Banned phrases and headlines over 12 words | Checked after each draft; up to two automatic revisions (`run_pipeline.py`) |
+| Stale events (> 30 days old, nothing new) | Flagged by the editor, dropped in `render.py` |
 
-# Quality Control Self-Correction Loop
-* Before outputting the briefing to the workspace, evaluate your work against these adversarial rules:
-  * **Executive Rigour:** Ensure the Macro View statements directly highlight systemic implications for bank balance sheets, liquidity, and wholesale market infrastructure.
-  * **No AI Fluff:** Remove hedge terms like *"appears to"*, *"it is evident that"*, or *"underscored by"*. State operational and regulatory realities plainly.
-  * **Proofread Spelling:** Flag and correct any inadvertent Americanised variants (e.g., *tokenization*, *centralized*, *synchronization*).
-6. Output the finished brief to `pipeline/output_briefing.md`.
+If you change the section structure, update `render.py` and the prompts in `run_pipeline.py` together.
 
-# Required Structural Layout
+# Writing rules (what the editor is told)
+1. **Facts first, only from the evidence.** Every statement must be supported by that article's headline or excerpt. Remove anything the evidence does not support. If there is no excerpt, say only what the headline says.
+2. **Plain English.** Short active sentences (aim for under 25 words), one idea per sentence. Say what happened, then add one plain sentence on why it matters to a bank only if it says something concrete (e.g. "Corporate clients can now move dollars at weekends without pre-funding.").
+3. **No jargon or filler.** Banned words include utilise, leverage, facilitate, enhance, ecosystem, stakeholders, solution, landscape, crucial, pave the way, this signals. Payments-insider shorthand (nostro, earmark, rails, plumbing) is replaced with plain words. No tacked-on endings such as ", affecting X". The full list is `HEDGE_PHRASES` / `JARGON_SUGGESTIONS` in `render.py`.
+4. **Acronyms.** Spell out less-known ones on first use (e.g. "Depository Trust & Clearing Corporation (DTCC)"); ECB, BIS, FCA, US, UK and EU are fine as they are.
+5. **Headlines.** Sentence case, at most 12 words, one specific claim about this week.
+6. **British English** spelling (tokenised, programme, centre, synchronisation).
+7. Never mention internal article ids (such as a17).
+
+# Output layout (rendered in code)
 ```markdown
-## 1. MACRO VIEW
-[4-6 punchy bullet points. Each bullet must open with a **bold declarative statement** (the headline), followed by 1-2 sentences of supporting facts. State the fact and state why it matters to market plumbing, bank balance sheets, or liquidity. Write in British English. Each bullet must be independently scannable.]
+## The week in brief
+* **Sentence-case headline of 12 words or fewer.** One or two plain sentences on what it means.
 
-## 2. CORE PILLAR DEVELOPMENTS
+## What happened
 
-### Banking Infrastructure & Commercial Rails
-*[1-2 sentence executive synthesis paragraph on liquidity, capital velocity, and commercial banking impact.]*
+### Banks and payments
+One or two sentences on what changed this week and for whom.
 
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
+* [Article title](publisher URL) *(Publisher)*: What happened, with names, numbers and dates.
 
-### Institutional Asset Management & RWAs
-*[1-2 sentence executive synthesis paragraph on collateral mobility, fund tokenisation, or secondary liquidity.]*
+### Funds and tokenised assets
+### Central banks and public infrastructure
+### Regulation and law
+### New technology            (only when there are items)
 
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
+## What is holding things back
+* **Separate networks that don't connect:** ...
+* **Liquidity and balance sheets:** ...
+* **Settlement and post-trade:** ...
 
-### Sovereign Infrastructure & CBDCs
-*[1-2 sentence executive synthesis paragraph on central bank settlement, RTGS synchronisation, or sandbox initiatives.]*
-
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
-
-### Regulatory & Legal Frameworks
-*[1-2 sentence executive synthesis paragraph on jurisdictional compliance, stablecoin regimes, or supervisory clarity.]*
-
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
-
-### Frontier & Emerging Innovations
-*[1-2 sentence executive synthesis paragraph on technical innovation across digital assets.]*
-
-*   [Primary Source Title](URL): [Concise development details and institutional implications.]
-
-## 3. STRUCTURAL & OPERATIONAL PAIN POINTS
-* **Interoperability Silos:** [Where disparate networks, private ledgers, or stablecoin standards fail to bridge cleanly, creating fragmented liquidity pools.]
-* **Balance Sheet & Liquidity Friction:** [Capital constraints, deposit disintermediation, parallel liquidity systems, or 24/7 liquidity buffer requirements under Basel III.]
-* **Post-Trade Plumbing Constraints:** [Settlement bottlenecks, custodian friction, or legacy ledger synchronisation and batch processing limitations.]
-
-## 4. NEW HIGH-SIGNAL TARGETS FOR TRACKING
-* [**Target / Entity Name**](URL): [1-2 sentences explaining why institutions, corporate treasuries, or banks should track this specific target emerging from this week's developments.]
-[Include 4-6 dynamic targets derived specifically from this week's news.]
+## Worth watching
+* [**Name**](URL): Why it is worth tracking, in one or two sentences.
 ```

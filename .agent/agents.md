@@ -27,4 +27,4 @@ Autonomously discover, enrich, filter, and synthesise weekly regulated wholesale
 ### 3. The Chief Editor & QC
 * **Skill Identifier:** `editor`
 * **Trigger:** Fired immediately upon validation of `shared_artifacts/strategic_analysis.json`.
-* **Output Artifact:** Produces `pipeline/output_briefing.md` in the 4-section executive layout (Macro View, Core Pillar Developments, Structural & Operational Pain Points, New High-Signal Targets for Tracking) and triggers external publishing coordinates (`pipeline/publish.py`).
+* **Output Artifact:** Produces `pipeline/output_briefing.md` in the 4-section executive layout (The week in brief, What happened, What is holding things back, Worth watching), rendered in code by `pipeline/render.py` and triggers external publishing coordinates (`pipeline/publish.py`).
