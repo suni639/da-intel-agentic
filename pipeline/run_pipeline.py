@@ -164,8 +164,45 @@ def generate_analysis(client, model, prompt, label, attempts=STRUCTURED_ATTEMPTS
     raise last_error
 
 
+def index_articles(raw_feed):
+    """Assign short ids; return (prompt_articles, id -> article)."""
+    by_id, prompt_articles = {}, []
+    for i, article in enumerate(raw_feed, start=1):
+        aid = f"a{i}"
+        by_id[aid] = article
+        item = {"id": aid, "title": article.get("title", ""), "source": article.get("source", "")}
+        if article.get("published"):
+            item["published"] = article["published"][:10]
+        if article.get("content"):
+            item["content"] = article["content"]
+        prompt_articles.append(item)
+    return prompt_articles, by_id
+
+
+def resolve_article_refs(analysis, by_id):
+    """Fill title/source/url from the cited feed article; drop developments citing unknown ids."""
+    for pillar in analysis.pillars:
+        kept = []
+        for dev in pillar.developments:
+            article = by_id.get(dev.article_id.strip())
+            if article is None:
+                print(f"WARNING: development '{dev.title or dev.details[:60]}' cites unknown article id "
+                      f"{dev.article_id!r}; dropped", file=sys.stderr)
+                continue
+            dev.title = article.get("title") or dev.title
+            dev.source = article.get("source") or dev.source
+            dev.url = article.get("url", "")
+            kept.append(dev)
+        pillar.developments = kept
+    for target in analysis.new_high_signal_targets:
+        article = by_id.get(target.article_id.strip())
+        target.url = article.get("url", "") if article else ""
+    return analysis
+
+
 def run_strategist(client, model, articles):
     print("Executing Macro Strategist (Noise Gate & Categorisation)...")
+    articles, by_id = index_articles(articles)
     
     prompt = f"""
 You are the Macro Strategist for the Institutional Digital Asset Intelligence pipeline, calibrated for wholesale financial markets with a core focus on commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets, and financial market infrastructure (FMIs).
@@ -219,17 +256,17 @@ Selection discipline (this is an executive brief, not a news digest):
 
 Output contract (the response schema is enforced; follow these content rules):
 - "pillars" is a list; each entry's "name" must be one of the five Core Pillars above. Omit a pillar entirely if it has no qualifying developments.
-- Every development "url" MUST be copied exactly from the "url" field of a raw feed article below. Never invent, shorten or alter URLs. If a development has no matching feed article, do not include it.
-- Every development "source" must be the "source" field of that feed article; "title" should be the article title.
-- For "new_high_signal_targets", reuse the feed article URL that introduced the target. If none exists, set "url" to an empty string.
+- Each raw feed article has a short "id" (e.g. "a17"). Every development MUST set "article_id" to the id of the article it is based on; when several articles cover the same event, use the most authoritative one. Leave "title", "source" and "url" empty: they are filled in from the feed automatically. Never cite an id that is not in the list below.
+- For "new_high_signal_targets", set "article_id" to the article that introduced the target (or an empty string if none) and leave "url" empty.
 - Do not wrap the JSON in markdown fences.
 
 Raw feed articles:
-{json.dumps(articles, indent=2)}
+{json.dumps(articles, ensure_ascii=False, separators=(",", ":"))}
 """
 
     try:
-        return generate_analysis(client, model, prompt, "Macro Strategist")
+        analysis = generate_analysis(client, model, prompt, "Macro Strategist")
+        return resolve_article_refs(analysis, by_id)
     except Exception as e:
         log_error(f"Macro Strategist API execution failed: {e}")
         return None

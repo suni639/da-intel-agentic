@@ -83,6 +83,16 @@ jobs:
           echo "Dry run flag: '${DRY_RUN_FLAG}'"
           python pipeline/run_pipeline.py $DRY_RUN_FLAG 2>&1 | tee pipeline_output.log
 
+      - name: Show dry-run brief in job summary
+        if: ${{ always() && inputs.dry_run }}
+        run: |
+          if [ -f pipeline/output_briefing.md ]; then
+            { echo "# Dry-run brief"; echo; cat pipeline/output_briefing.md; } >> "$GITHUB_STEP_SUMMARY"
+            cat pipeline/output_briefing.md
+          else
+            echo "No briefing was produced."
+          fi
+
       - name: Commit and push updated system state
         # Only real runs on main may write state; a dispatch from a feature
         # branch would otherwise push that branch's commits to main.

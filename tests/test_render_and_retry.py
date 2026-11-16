@@ -22,7 +22,7 @@ def sample_payload():
                 "name": "Sovereign Infrastructure & CBDCs",
                 "synthesis": "Central banks prioritize synchronization.",
                 "developments": [
-                    {"title": "BoE DSS update", "source": "BoE News",
+                    {"article_id": "a1", "title": "BoE DSS update", "source": "BoE News",
                      "url": "https://www.bankofengland.co.uk/news/dss", "details": "Sandbox expanded."},
                 ],
             },
@@ -30,9 +30,9 @@ def sample_payload():
                 "name": "Banking Infrastructure & Commercial Rails",
                 "synthesis": "Commercial bank money is tokenized.",
                 "developments": [
-                    {"title": "Fnality [GBP] launch", "source": "Ledger Insights",
+                    {"article_id": "a2", "title": "Fnality [GBP] launch", "source": "Ledger Insights",
                      "url": "https://www.ledgerinsights.com/fnality/", "details": "Live settlement."},
-                    {"title": "Made-up BIS paper", "source": "BIS",
+                    {"article_id": "a3", "title": "Made-up BIS paper", "source": "BIS",
                      "url": "https://www.bis.org/publ/fake123.htm", "details": "Hallucinated."},
                 ],
             },
@@ -197,6 +197,36 @@ class TestRetry(unittest.TestCase):
         import json
         resp = SimpleNamespace(parsed=None, text="```json\n" + json.dumps(sample_payload()) + "\n```")
         self.assertIsInstance(run_pipeline.parse_analysis(resp), StrategicAnalysis)
+
+
+class TestArticleRefs(unittest.TestCase):
+    def test_index_and_resolve(self):
+        feed = [
+            {"title": "Fnality live", "url": "https://news.google.com/rss/articles/LONGOPAQUE?oc=5",
+             "source": "FT", "published": "2026-11-15T09:00:00+00:00", "content": ""},
+            {"title": "BoE DSS", "url": "https://bankofengland.co.uk/dss", "source": "BoE", "content": "x"},
+        ]
+        prompt_articles, by_id = run_pipeline.index_articles(feed)
+        self.assertEqual(prompt_articles[0], {"id": "a1", "title": "Fnality live", "source": "FT",
+                                              "published": "2026-11-15"})
+        self.assertNotIn("url", prompt_articles[1])
+
+        analysis = StrategicAnalysis.model_validate({
+            "macro_view": [], "structural_pain_points": sample_payload()["structural_pain_points"],
+            "pillars": [{"name": "Banking Infrastructure & Commercial Rails", "synthesis": "s", "developments": [
+                {"article_id": "a1", "details": "d"},
+                {"article_id": "a99", "title": "Ghost", "details": "invented"},
+            ]}],
+            "new_high_signal_targets": [{"name": "Fnality", "article_id": "a1", "rationale": "r"},
+                                        {"name": "Other", "article_id": "", "rationale": "r"}],
+        })
+        run_pipeline.resolve_article_refs(analysis, by_id)
+        devs = analysis.pillars[0].developments
+        self.assertEqual(len(devs), 1)  # unknown id dropped
+        self.assertEqual((devs[0].title, devs[0].source, devs[0].url),
+                         ("Fnality live", "FT", "https://news.google.com/rss/articles/LONGOPAQUE?oc=5"))
+        self.assertEqual(analysis.new_high_signal_targets[0].url, feed[0]["url"])
+        self.assertEqual(analysis.new_high_signal_targets[1].url, "")
 
 
 class TestStructuredRetry(unittest.TestCase):

@@ -27,9 +27,13 @@ class MacroPoint(BaseModel):
 
 
 class Development(BaseModel):
-    title: str
-    source: str
-    url: str
+    # The model cites the input article by id; title/source/url are then
+    # filled in by code from the feed (see run_pipeline.resolve_article_refs),
+    # so long opaque URLs never have to be copied by the model.
+    article_id: str
+    title: str = ""
+    source: str = ""
+    url: str = ""
     details: str
 
 
@@ -47,7 +51,8 @@ class PainPoints(BaseModel):
 
 class Target(BaseModel):
     name: str
-    url: str
+    article_id: str = ""
+    url: str = ""
     rationale: str
 
 
