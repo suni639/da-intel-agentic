@@ -99,6 +99,20 @@ class TestEditorRevision(unittest.TestCase):
         self.assertIn("pave the way", prompt)
 
 
+class TestStale(unittest.TestCase):
+    def test_editor_stale_flag_merged_and_dropped_from_render(self):
+        from render import render_briefing
+        original = StrategicAnalysis.model_validate(sample_payload())
+        edited_payload = sample_payload()
+        edited_payload["pillars"][0]["developments"][0]["stale"] = True
+        merged = run_pipeline.merge_editor_prose(original, StrategicAnalysis.model_validate(edited_payload))
+        self.assertTrue(merged.pillars[0].developments[0].stale)
+        md = render_briefing(merged)
+        self.assertNotIn("BoE DSS update", md)
+        self.assertNotIn("### Sovereign Infrastructure", md)  # pillar emptied -> omitted
+        self.assertIn("Fnality", md)
+
+
 class TestHedging(unittest.TestCase):
     def test_word_boundaries(self):
         self.assertEqual(find_hedging("A robust framework"), ["robust"])

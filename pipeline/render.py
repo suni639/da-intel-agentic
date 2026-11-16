@@ -77,6 +77,9 @@ HEDGE_PHRASES = [
     "seamless", "seamlessly", "streamline", "streamlines", "foster", "fosters", "fostering",
     "robust", "cutting-edge", "transformative", "revolutionise", "revolutionize",
     "ushers in", "a new era", "the future of", "showcases", "highlights the importance",
+    "holds importance", "these developments indicate", "these actions aim", "these efforts aim",
+    "aims to enhance", "aim to enhance", "strategic move", "notable", "plays a key role",
+    "key role", "in the digital asset space", "new approaches",
 ]
 
 
@@ -191,6 +194,8 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
 
     for name in PILLAR_ORDER:
         pillar = by_name.get(name)
+        if pillar:
+            pillar.developments = [d for d in pillar.developments if not d.stale]
         if not pillar or not pillar.developments:
             continue
         lines.append(f"### {name.value}")
@@ -220,6 +225,11 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
 
 def finalise_briefing(analysis: StrategicAnalysis, allowed_urls: Iterable[str]) -> str:
     """Run all QC steps and render. Mutates ``analysis``."""
+    for pillar in analysis.pillars:
+        for dev in pillar.developments:
+            if dev.stale:
+                print(f"WARNING: dropping stale development '{dev.title}' (event predates this week)",
+                      file=sys.stderr)
     for warning in enforce_link_allowlist(analysis, allowed_urls):
         print(f"WARNING: {warning}", file=sys.stderr)
     apply_british_english(analysis)

@@ -265,6 +265,30 @@ class TestClient(unittest.TestCase):
         self.assertEqual(client._api_client._http_options.api_version, "v1beta")
 
 
+class TestFinaliseRun(unittest.TestCase):
+    def run_case(self, result, rc=0, dry=False):
+        from unittest.mock import patch
+        with patch.object(run_pipeline, "update_system_state") as upd, \
+                patch.object(run_pipeline, "log_error"):
+            code = run_pipeline.finalise_run(result, rc, [{"url": "u"}], dry)
+        return code, upd.called
+
+    def test_all_ok(self):
+        self.assertEqual(self.run_case({"hugo": "ok", "email": "ok"}), (0, True))
+
+    def test_partial_failure_saves_state_but_fails_run(self):
+        self.assertEqual(self.run_case({"hugo": "failed", "email": "ok"}, rc=1), (1, True))
+
+    def test_total_failure_keeps_state_for_retry(self):
+        self.assertEqual(self.run_case({"hugo": "failed", "email": "failed"}, rc=1), (1, False))
+
+    def test_publisher_crash(self):
+        self.assertEqual(self.run_case({}, rc=1), (1, False))
+
+    def test_dry_run_never_saves(self):
+        self.assertEqual(self.run_case({"hugo": "dry-run", "email": "dry-run"}, dry=True), (0, False))
+
+
 class TestStateAndPublish(unittest.TestCase):
     def test_prune_processed_urls(self):
         now = datetime.datetime(2026, 11, 16, tzinfo=datetime.timezone.utc)

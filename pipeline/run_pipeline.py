@@ -288,12 +288,16 @@ Factual grounding (most important rule):
 - A development's "details" may ONLY state facts supported by its own article's headline or excerpt. Remove any claim in the current draft that the evidence does not support (for example an inferred programme, sandbox, amount, date or partner).
 - If the excerpt is empty, restrict the details to what the headline itself states.
 - Macro view, syntheses, pain points and rationales may only rely on facts present in the developments' evidence.
+
+Freshness:
+- Set a development's "stale" to true when its evidence shows the core event happened more than 30 days before the brief date AND the article reports nothing new about it (e.g. a fund that launched months ago, re-reported this week). Otherwise leave "stale" false. Stale developments are removed from the brief, so do not rely on them in the macro view, syntheses, pain points or targets.
 """
 
 
 def _editor_prompt(strategic_analysis, evidence_block, extra=""):
     return f"""
 You are the Chief Editor for the Institutional Digital Asset Intelligence pipeline.
+Brief date: {datetime.date.today().isoformat()}.
 Rewrite the prose fields of the strategic analysis JSON below to publication standard.
 {EVIDENCE_RULES}
 Style rules:
@@ -301,7 +305,7 @@ Style rules:
 Hard constraints:
 - Return the SAME JSON structure with the SAME number of items in every list, in the SAME order.
 - Do NOT change any "article_id", "url", "title", "source", pillar "name" or target "name" value. Copy them exactly.
-- Only rewrite: macro_view headline/detail, pillar synthesis, development details, structural_pain_points values, target rationale.
+- Only rewrite: macro_view headline/detail, pillar synthesis, development details and stale flag, structural_pain_points values, target rationale.
 {extra}
 Evidence:
 {json.dumps(evidence_block, ensure_ascii=False, separators=(",", ":"))}
@@ -366,6 +370,7 @@ def merge_editor_prose(original, edited):
         r_p.synthesis = e_p.synthesis
         for r_d, e_d in zip(r_p.developments, e_p.developments):
             r_d.details = e_d.details
+            r_d.stale = e_d.stale
     result.structural_pain_points = edited.structural_pain_points.model_copy()
     for r, e in zip(result.new_high_signal_targets, edited.new_high_signal_targets):
         r.rationale = e.rationale
@@ -532,22 +537,53 @@ def main():
 
     # Step 5: Run Publishing Layer
     print("Invoking Publishing layer...")
+    dry_run = "--dry-run" in sys.argv
     publish_args = [sys.executable, os.path.join(WORKSPACE_ROOT, "pipeline", "publish.py")]
-    if "--dry-run" in sys.argv:
+    if dry_run:
         publish_args.append("--dry-run")
+    result_path = os.path.join(WORKSPACE_ROOT, "shared_artifacts", "publish_result.json")
+    if os.path.exists(result_path):
+        os.remove(result_path)
+    proc = subprocess.run(publish_args)
+    result = read_publish_result(result_path)
+
+    exit_code = finalise_run(result, proc.returncode, raw_feed, dry_run)
+    sys.exit(exit_code)
+
+
+def read_publish_result(path):
     try:
-        subprocess.run(
-            publish_args,
-            check=True
-        )
-        print("Pipeline run completed successfully.")
-        
-        # Save state only if it was NOT a dry run
-        if "--dry-run" not in sys.argv:
-            update_system_state(raw_feed)
-    except Exception as e:
-        log_error(f"Publishing script failed: {e}")
-        sys.exit(1)
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def finalise_run(result, publish_returncode, raw_feed, dry_run):
+    """Decide state update and exit code from per-channel publish outcomes.
+
+    - If the brief reached ANY channel, record the articles as processed so
+      next week's run does not repeat them (even if another channel failed).
+    - If ANY channel failed, exit non-zero so the failure is visible/notified.
+    """
+    delivered = [ch for ch, status in result.items() if status == "ok"]
+    failed = [ch for ch, status in result.items() if status == "failed"]
+    if not result and publish_returncode != 0:
+        failed = ["publisher"]
+
+    if not dry_run and delivered:
+        update_system_state(raw_feed)
+    elif not dry_run:
+        print("Brief was not delivered to any channel; system state left unchanged "
+              "so the same articles are retried next run.")
+
+    if failed:
+        log_error(f"Publishing failed for: {', '.join(failed)} "
+                  f"(delivered: {', '.join(delivered) or 'none'})")
+        return 1
+    print(f"Pipeline run completed successfully. Channels: {result}")
+    return 0
+
 
 if __name__ == '__main__':
     main()

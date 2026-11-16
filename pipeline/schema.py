@@ -35,6 +35,9 @@ class Development(BaseModel):
     source: str = ""
     url: str = ""
     details: str
+    # Set by the editor when the evidence shows the underlying event is old
+    # news (e.g. a launch months ago re-reported this week); not rendered.
+    stale: bool = False
 
 
 class Pillar(BaseModel):
