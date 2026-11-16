@@ -27,207 +27,60 @@ def verify_environment():
         return False
     return True
 
-_H2_RE = re.compile(r"<h2>(.*?)</h2>", re.IGNORECASE | re.DOTALL)
+# Plain, email-client-safe styling. Styles are inlined on each element because
+# Outlook and Gmail ignore or strip much of a <style> block. No backgrounds,
+# boxes or coloured bars: white page, clear headings, readable body text.
+FONT = "font-family:Arial,Helvetica,sans-serif;"
+TEXT = "#222222"
+MUTED = "#666666"
+LINK = "#1a5fb4"
+
+INLINE_STYLES = {
+    "h2": f"{FONT}font-size:17px;font-weight:bold;color:{TEXT};margin:28px 0 8px 0;",
+    "h3": f"{FONT}font-size:15px;font-weight:bold;color:{TEXT};margin:20px 0 6px 0;",
+    "p": f"{FONT}font-size:14px;line-height:1.55;color:{TEXT};margin:0 0 10px 0;",
+    "ul": "margin:0 0 14px 0;padding-left:20px;",
+    "li": f"{FONT}font-size:14px;line-height:1.55;color:{TEXT};margin:0 0 8px 0;",
+    "em": f"font-style:normal;color:{MUTED};",
+}
 
 
-def wrap_section(raw_html, heading_keyword, css_class):
-    """Wrap the body of the first <h2> section whose title contains ``heading_keyword``.
+def _inline_styles(html):
+    for tag, style in INLINE_STYLES.items():
+        html = re.sub(rf"<{tag}>", f'<{tag} style="{style}">', html)
+    return re.sub(r'<a href="', f'<a style="color:{LINK};text-decoration:underline;" href="', html)
 
-    Matching is case-insensitive and ignores numbering, so "## 1. Macro View" and
-    "## 2. MACRO VIEW" are both handled. The body runs to the next <h2> or the end.
-    """
-    headings = list(_H2_RE.finditer(raw_html))
-    for i, match in enumerate(headings):
-        if heading_keyword.lower() in match.group(1).lower():
-            body_start = match.end()
-            body_end = headings[i + 1].start() if i + 1 < len(headings) else len(raw_html)
-            return (raw_html[:body_start] + f'<div class="{css_class}">'
-                    + raw_html[body_start:body_end] + "</div>" + raw_html[body_end:])
-    return raw_html
+
+def _display_date(date_str):
+    try:
+        return datetime.date.fromisoformat(date_str).strftime("%-d %B %Y")
+    except ValueError:
+        return date_str
 
 
 # HTML Newsletter Formatter
 def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
     import markdown
 
-    raw_html = markdown.markdown(markdown_content)
-    raw_html = wrap_section(raw_html, "STRATEGIC TAKEAWAYS", "takeaways-card")
-    raw_html = wrap_section(raw_html, "MACRO VIEW", "synthesis-card")
-
-    css_styles = """
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background-color: #f1f5f9;
-      color: #334155;
-      margin: 0;
-      padding: 0;
-      -webkit-font-smoothing: antialiased;
-    }
-    .email-container {
-      max-width: 680px;
-      margin: 40px auto;
-      background-color: #ffffff;
-      border-radius: 12px;
-      border: 1px solid #e2e8f0;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-      overflow: hidden;
-    }
-    .header {
-      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      padding: 32px;
-      color: #ffffff;
-    }
-    .header h1 {
-      font-size: 22px;
-      font-weight: 700;
-      margin: 0 0 6px 0;
-      letter-spacing: -0.5px;
-    }
-    .header .date {
-      font-size: 13px;
-      color: #94a3b8;
-      font-weight: 500;
-    }
-    .content {
-      padding: 32px;
-      line-height: 1.6;
-    }
-    .content h1 {
-      display: none;
-    }
-    .content h2 {
-      font-size: 14px;
-      font-weight: 700;
-      color: #0f172a;
-      border-bottom: 2px solid #e2e8f0;
-      padding-bottom: 6px;
-      margin-top: 28px;
-      margin-bottom: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .content h3 {
-      font-size: 14.5px;
-      font-weight: 700;
-      color: #0f172a;
-      border-bottom: 1.5px solid #cbd5e1;
-      padding-bottom: 5px;
-      margin-top: 24px;
-      margin-bottom: 10px;
-      letter-spacing: -0.2px;
-    }
-    .content p {
-      margin-top: 0;
-      margin-bottom: 16px;
-      font-size: 14px;
-      color: #475569;
-    }
-    .content > p > em:only-child {
-      display: block;
-      font-style: normal;
-      background-color: #f8fafc;
-      border-left: 3px solid #64748b;
-      padding: 8px 12px;
-      margin-top: 6px;
-      margin-bottom: 12px;
-      color: #334155;
-      font-size: 13.5px;
-      line-height: 1.5;
-      border-radius: 0 4px 4px 0;
-    }
-    .takeaways-card {
-      background-color: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-left: 5px solid #0f172a;
-      padding: 20px;
-      border-radius: 0 8px 8px 0;
-      margin-bottom: 24px;
-    }
-    .takeaways-card ul {
-      margin: 0;
-      padding-left: 18px;
-    }
-    .takeaways-card li {
-      margin-bottom: 10px;
-      font-size: 14px;
-      color: #1e293b;
-      line-height: 1.6;
-    }
-    .takeaways-card li strong {
-      color: #0f172a;
-    }
-    .synthesis-card {
-      background-color: #f8fafc;
-      border-left: 4px solid #2563eb;
-      padding: 18px;
-      border-radius: 0 8px 8px 0;
-      margin-bottom: 24px;
-    }
-    .synthesis-card p {
-      margin: 0;
-      font-size: 14.5px;
-      color: #1e293b;
-      line-height: 1.6;
-    }
-    .content ul {
-      padding-left: 20px;
-      margin-top: 8px;
-      margin-bottom: 20px;
-    }
-    .content li {
-      margin-bottom: 12px;
-      font-size: 13.5px;
-      color: #475569;
-    }
-    .content li strong {
-      color: #0f172a;
-    }
-    .content a {
-      color: #2563eb;
-      text-decoration: none;
-      font-weight: 500;
-    }
-    .content a:hover {
-      text-decoration: underline;
-    }
-    .footer {
-      background-color: #f8fafc;
-      padding: 24px;
-      text-align: center;
-      font-size: 11px;
-      color: #94a3b8;
-      border-top: 1px solid #f1f5f9;
-    }
-    """
-    
-    html_newsletter = f"""<!DOCTYPE html>
+    body = _inline_styles(markdown.markdown(markdown_content))
+    return f"""<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{subject}</title>
-  <style>
-    {css_styles}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{subject}</title>
 </head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <h1>Institutional Digital Asset Intelligence</h1>
-      <div class="date">{date_str}</div>
-    </div>
-    <div class="content">
-      {raw_html}
-    </div>
-    <div class="footer">
-      This is an automated intelligence briefing compiled by DA-INTEL-01.<br>
-      Recipients are set via RECIPIENT_EMAIL; sources are configured in pipeline/ingestion.py.
-    </div>
-  </div>
+<body style="margin:0;padding:0;background:#ffffff;">
+<div style="max-width:680px;margin:0 auto;padding:24px 20px;background:#ffffff;">
+<p style="{FONT}font-size:20px;font-weight:bold;color:{TEXT};margin:0 0 2px 0;">Digital Asset Digest</p>
+<p style="{FONT}font-size:13px;color:{MUTED};margin:0 0 8px 0;">Weekly brief on institutional digital assets &middot; {_display_date(date_str)}</p>
+{body}
+<p style="{FONT}font-size:12px;color:{MUTED};margin:28px 0 0 0;">Compiled automatically by DA-INTEL-01 from public sources. Links go to the original articles.</p>
+</div>
 </body>
 </html>
 """
-    return html_newsletter
+
 
 def parse_recipients(recipient_env, default=None):
     """Split a comma/semicolon separated list; fall back to ``default`` (SMTP_USER)."""

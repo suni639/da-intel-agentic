@@ -95,6 +95,21 @@ def to_british(text: str) -> str:
     return _AMERICANISM.sub(fix, text)
 
 
+def _map_prose(analysis: StrategicAnalysis, fn) -> None:
+    for point in analysis.macro_view:
+        point.headline, point.detail = fn(point.headline), fn(point.detail)
+    for pillar in analysis.pillars:
+        pillar.synthesis = fn(pillar.synthesis)
+        for dev in pillar.developments:
+            dev.details = fn(dev.details)
+    pp = analysis.structural_pain_points
+    pp.interoperability_silos = fn(pp.interoperability_silos)
+    pp.balance_sheet_and_liquidity_friction = fn(pp.balance_sheet_and_liquidity_friction)
+    pp.post_trade_plumbing_constraints = fn(pp.post_trade_plumbing_constraints)
+    for target in analysis.new_high_signal_targets:
+        target.rationale = fn(target.rationale)
+
+
 def apply_british_english(analysis: StrategicAnalysis) -> None:
     """Normalise spelling in prose fields only.
 
@@ -116,7 +131,131 @@ def apply_british_english(analysis: StrategicAnalysis) -> None:
         target.rationale = to_british(target.rationale)
 
 
+# Corporate jargon: replace with plain words (suggestions are given to the editor).
+JARGON_SUGGESTIONS = {
+    "utilise": "use", "utilises": "uses", "utilised": "used", "utilising": "using",
+    "leverage": "use", "leverages": "uses", "leveraging": "using",
+    "facilitate": "allow / help", "facilitates": "allows / helps", "facilitating": "allowing",
+    "enhance": "improve", "enhances": "improves", "enhanced": "improved", "enhancing": "improving",
+    "optimise": "improve", "optimises": "improves", "optimising": "improving",
+    "synergy": "(cut)", "synergies": "(cut)", "paradigm": "model", "holistic": "(cut)",
+    "ecosystem": "market / network", "stakeholders": "banks / firms (name them)",
+    "going forward": "(cut)", "best-in-class": "(cut)", "value proposition": "benefit",
+    "operationalise": "put into practice", "capabilities": "(say what it can do)",
+    "solution": "product / service / system", "solutions": "products / services",
+    "foundational": "core", "proliferation": "growth", "necessitate": "require",
+    "necessitates": "requires", "impacting": "affecting", "inaugural": "first",
+    "concurrently": "at the same time", "in order to": "to", "a range of": "several",
+    # Payments-insider shorthand: fine for specialists, opaque for a wider executive audience.
+    "nostro": "accounts banks pre-fund abroad", "vostro": "accounts held for foreign banks",
+    "earmark": "set aside", "earmarks": "sets aside", "earmarked": "set aside",
+    "earmarking": "setting aside", "rails": "networks / systems", "plumbing": "infrastructure",
+    "second-level": "in seconds", "multi-chain": "on several blockchains",
+    ", affecting": "(end the sentence, or say concretely what changes)",
+    ", enabling": "(end the sentence, or say concretely what changes)",
+    ", impacting": "(end the sentence, or say concretely what changes)",
+}
+HEDGE_PHRASES += [j for j in JARGON_SUGGESTIONS if j not in HEDGE_PHRASES]
+
+# Exact one-for-one swaps that are always safe to apply deterministically.
+_SAFE_SWAPS = {
+    "utilise": "use", "utilises": "uses", "utilised": "used", "utilising": "using",
+    "inaugural": "first", "concurrently": "at the same time", "in order to": "to",
+}
+
+
+def plain_english(text: str) -> str:
+    def swap(match):
+        word = match.group(0)
+        repl = _SAFE_SWAPS[word.lower()]
+        return repl[0].upper() + repl[1:] if word[0].isupper() else repl
+    pattern = r"\b(" + "|".join(re.escape(w) for w in _SAFE_SWAPS) + r")\b"
+    return re.sub(pattern, swap, text, flags=re.IGNORECASE)
+
+
 _HEDGE_RE = [(p, re.compile(r"\b" + re.escape(p) + r"\b", re.IGNORECASE)) for p in HEDGE_PHRASES]
+
+
+# ---------------------------------------------------------------------------
+# Headline QC: sentence case, at most MAX_HEADLINE_WORDS words
+# ---------------------------------------------------------------------------
+
+MAX_HEADLINE_WORDS = 12
+_SMALL_WORDS = {"a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with", "&"}
+
+
+def _is_title_case(headline: str) -> bool:
+    words = [w for w in headline.split() if w.lower() not in _SMALL_WORDS and w[:1].isalpha()]
+    if len(words) < 3:
+        return False
+    capitalised = sum(1 for w in words[1:] if w[0].isupper())
+    return capitalised / max(len(words) - 1, 1) >= 0.6
+
+
+def to_sentence_case(headline: str, reference_text: str) -> str:
+    """Lower-case Title Case headline words that are ordinary words elsewhere in the brief.
+
+    Proper nouns are kept: a word stays capitalised if it is an acronym or
+    mixed-case (DBS, JPMorgan), if the capitalised phrase it belongs to appears
+    verbatim in the body (Bank of England, Project Faro), or if the word never
+    appears in lower case in the body.
+    """
+    if not _is_title_case(headline):
+        return headline
+    lowercase_words = set(re.findall(r"\b[a-z][a-z]*\b", reference_text))
+    # Words written capitalised mid-sentence in the body are likely proper nouns.
+    midsentence_caps = set(re.findall(r"(?<=[a-z0-9,] )([A-Z][a-z]+)", reference_text))
+    tokens = headline.split(" ")
+    # Capitalised runs (allowing 'of', '&', 'and' inside) that appear verbatim in the body.
+    protected = set()
+    i = 0
+    while i < len(tokens):
+        if tokens[i][:1].isupper():
+            j = i
+            while j + 1 < len(tokens) and (tokens[j + 1][:1].isupper()
+                                           or tokens[j + 1] in ("of", "&", "and")):
+                j += 1
+            for start in range(i, j + 1):
+                for end in range(j, start, -1):
+                    phrase = " ".join(tokens[start:end + 1]).strip(".,:;")
+                    if re.search(r"(?<![A-Za-z])" + re.escape(phrase) + r"(?![A-Za-z])", reference_text):
+                        protected.update(range(start, end + 1))
+                        break
+            i = j + 1
+        else:
+            i += 1
+
+    def is_proper(part):
+        if not part[:1].isupper():
+            return True  # already lower case / number: leave as is
+        if part.isupper() or any(c.isupper() for c in part[1:]):  # DBS, FX, JPMorgan
+            return True
+        low = part.lower()
+        seen_lower = {low, low + "s", low.rstrip("s")} & lowercase_words
+        return part in midsentence_caps and not seen_lower
+
+    out = []
+    for idx, tok in enumerate(tokens):
+        if idx == 0 or idx in protected:
+            out.append(tok)
+            continue
+        m = re.match(r"^(\W*)(.*?)(\W*)$", tok)
+        lead, core, trail = m.group(1), m.group(2), m.group(3)
+        parts = core.split("-")
+        parts = [p if is_proper(p) else p.lower() for p in parts]
+        out.append(lead + "-".join(parts) + trail)
+    return " ".join(out)
+
+
+def apply_sentence_case_headlines(analysis: StrategicAnalysis) -> None:
+    reference = prose_text(analysis)
+    for point in analysis.macro_view:
+        point.headline = to_sentence_case(point.headline, reference)
+
+
+def long_headlines(analysis: StrategicAnalysis) -> List[str]:
+    return [p.headline for p in analysis.macro_view
+            if len(p.headline.split()) > MAX_HEADLINE_WORDS]
 
 
 def find_hedging(text: str) -> List[str]:
@@ -200,7 +339,7 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
             continue
         lines.append(f"### {name.value}")
         if pillar.synthesis.strip():
-            lines.append(f"*{_oneline(pillar.synthesis).strip('* ')}*")
+            lines.append(_oneline(pillar.synthesis).strip("* "))
         lines.append("")
         for dev in pillar.developments:
             source = _oneline(dev.source)
@@ -233,6 +372,8 @@ def finalise_briefing(analysis: StrategicAnalysis, allowed_urls: Iterable[str]) 
     for warning in enforce_link_allowlist(analysis, allowed_urls):
         print(f"WARNING: {warning}", file=sys.stderr)
     apply_british_english(analysis)
+    _map_prose(analysis, plain_english)
+    apply_sentence_case_headlines(analysis)
     markdown_text = render_briefing(analysis)
     hedges = find_hedging(prose_text(analysis))
     if hedges:

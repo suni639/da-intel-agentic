@@ -113,6 +113,40 @@ class TestStale(unittest.TestCase):
         self.assertIn("Fnality", md)
 
 
+class TestHeadlines(unittest.TestCase):
+    BODY = ("DBS and JPMorgan moved tokenised deposits. The Bank of England, MAS and Bank of Thailand "
+            "completed trials with Mizuho on Canton Network. Central banks set rules for collateral.")
+
+    def test_sentence_case_keeps_proper_nouns(self):
+        from render import to_sentence_case
+        self.assertEqual(
+            to_sentence_case("The Bank of England Tests Tokenised Collateral With Canton Network Partners.", self.BODY),
+            "The Bank of England tests tokenised collateral with Canton Network partners.")
+        self.assertEqual(to_sentence_case("BIS FX Trials Prove Cross-Border Settlement.", self.BODY),
+                         "BIS FX trials prove cross-border settlement.")
+
+    def test_already_sentence_case_untouched(self):
+        from render import to_sentence_case
+        h = "DBS and JPMorgan link Tokenised deposits across Asia."
+        self.assertEqual(to_sentence_case(h, self.BODY), h)
+
+    def test_long_headline_triggers_revision(self):
+        original = StrategicAnalysis.model_validate(sample_payload())
+        long_payload = sample_payload()
+        long_payload["macro_view"][0]["headline"] = " ".join(["word"] * 15)
+        long_payload["macro_view"][0]["detail"] = "Banks moved dollars at weekends."
+        short_payload = sample_payload()
+        short_payload["macro_view"][0]["detail"] = "Banks moved dollars at weekends."
+        client = FakeClient([response(long_payload), response(short_payload)])
+        result = run_pipeline.run_editor(client, "m1", original, {})
+        self.assertEqual(result.macro_view[0].headline, "Deposit tokens go live")
+        self.assertEqual(len(client.calls), 2)
+
+    def test_insider_jargon_flagged(self):
+        self.assertIn("nostro", find_hedging("Banks cut Nostro pre-funding"))
+        self.assertIn("earmarks", find_hedging("using locked reserve earmarks"))
+
+
 class TestHedging(unittest.TestCase):
     def test_word_boundaries(self):
         self.assertEqual(find_hedging("A robust framework"), ["robust"])

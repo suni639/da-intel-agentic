@@ -11,7 +11,8 @@ from pydantic import ValidationError
 
 from common import WORKSPACE_ROOT, get_env_var, log_error
 from enrich import evidence_for_prompt, gather_evidence
-from render import HEDGE_PHRASES, finalise_briefing, find_hedging, prose_text
+from render import (HEDGE_PHRASES, JARGON_SUGGESTIONS, MAX_HEADLINE_WORDS, finalise_briefing,
+                    find_hedging, long_headlines, prose_text)
 from schema import StrategicAnalysis
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -282,8 +283,10 @@ Raw feed articles:
         return None
 
 EDITOR_PROSE_RULES = f"""
-1. Strict British English spelling (tokenised, tokenisation, utilised, prioritised, standardise, programmes, centre, synchronisation, optimisation).
-2. Every development "details" must open with the concrete fact: who did what, with numbers, dates, currencies, counterparties or jurisdictions where the evidence gives them. Then at most one clause on the specific mechanism it affects (e.g. intraday liquidity, collateral eligibility, settlement finality, deposit outflows, capital treatment, cut-off times). No generic benefit claims such as "improves efficiency" or "enhances liquidity" without saying how.
+Voice: write like a well-edited newspaper brief for a busy senior banker. Plain English, short sentences (aim for under 25 words), active voice, one idea per sentence. Say what happened, then in one plain sentence why it matters to a bank (e.g. "Banks can move dollars between Singapore and New York at weekends without pre-funding."). Domain terms that carry meaning (tokenised deposit, stablecoin, repo, payment-versus-payment) are fine; spell out less-known acronyms on first use (e.g. "Depository Trust & Clearing Corporation (DTCC)"), but not ECB, BIS, FCA, US, UK, EU. No corporate jargon. Headlines in sentence case, at most 12 words.
+
+1. Strict British English spelling (tokenised, tokenisation, prioritised, standardise, programmes, centre, synchronisation).
+2. Every development "details" opens with the concrete fact: who did what, with numbers, dates, currencies, counterparties or jurisdictions where the evidence gives them. Add a second short sentence ONLY if it tells a banker something concrete (e.g. "Corporate clients can now move dollars at weekends without pre-funding."); otherwise stop after the fact. Never end a sentence with a tacked-on participle clause such as ", affecting X", ", enabling Y" or ", impacting Z". No generic benefit claims such as "improves efficiency".
 3. Macro view: synthesis, not a list. Each headline is one specific, falsifiable claim about what this week's developments mean together (name the institutions or programmes); each detail is 1-2 sentences on the implication for bank balance sheets, liquidity or market plumbing. Do not enumerate developments, and do not repeat a development already used in another macro point. No headline may be true of any week.
 7. Never mention article ids (such as a17) anywhere in the prose; refer to institutions and events by name.
 4. Pillar syntheses: 1-2 sentences naming what changed this week and for whom. Pain points and target rationales: concrete and specific to this week's items.
@@ -324,7 +327,7 @@ Strategic Analysis JSON:
 """
 
 
-def run_editor(client, model, strategic_analysis, evidence_block=None, max_revisions=1):
+def run_editor(client, model, strategic_analysis, evidence_block=None, max_revisions=2):
     """Ground and polish prose in the analysis JSON. Layout is rendered deterministically later.
 
     If banned phrases survive the first pass, the editor is asked once more to
@@ -349,13 +352,23 @@ def run_editor(client, model, strategic_analysis, evidence_block=None, max_revis
         current = merged
 
         offending = find_hedging(prose_text(current))
-        if not offending:
+        too_long = long_headlines(current)
+        if not offending and not too_long:
             return current
-        print(f"WARNING: editor draft {revision + 1} still uses banned phrases: {', '.join(offending)}",
-              file=sys.stderr)
-        extra = ("\nRevision request: the previous draft (below) still used these banned phrases: "
-                 + ", ".join(offending)
-                 + ". Rewrite every sentence containing them with concrete, specific wording.\n")
+        extra = "\nRevision request:"
+        if offending:
+            print(f"WARNING: editor draft {revision + 1} still uses banned phrases: {', '.join(offending)}",
+                  file=sys.stderr)
+            hints = "; ".join(f'"{p}" -> {JARGON_SUGGESTIONS[p]}' for p in offending if p in JARGON_SUGGESTIONS)
+            extra += (" the previous draft (below) still used these banned phrases: " + ", ".join(offending)
+                      + ". Rewrite every sentence containing them in plain, specific English."
+                      + (f" Suggested replacements: {hints}." if hints else ""))
+        if too_long:
+            print(f"WARNING: editor draft {revision + 1} has {len(too_long)} macro headline(s) over "
+                  f"{MAX_HEADLINE_WORDS} words", file=sys.stderr)
+            extra += (f" These macro view headlines exceed {MAX_HEADLINE_WORDS} words; shorten each to at most "
+                      f"{MAX_HEADLINE_WORDS} words in sentence case: " + " | ".join(too_long) + ".")
+        extra += "\n"
     return current
 
 

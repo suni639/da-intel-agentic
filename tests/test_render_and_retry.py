@@ -11,7 +11,7 @@ from render import (  # noqa: E402
     enforce_link_allowlist, to_british, render_briefing, finalise_briefing, find_hedging,
 )
 import run_pipeline  # noqa: E402
-from publish import wrap_section, parse_recipients, convert_markdown_to_newsletter_html  # noqa: E402
+from publish import parse_recipients, convert_markdown_to_newsletter_html  # noqa: E402
 
 
 def sample_payload():
@@ -90,12 +90,18 @@ class TestBritishEnglish(unittest.TestCase):
                          "Tokenisation was prioritised; banks utilise it.")
         self.assertEqual(to_british("We analyze and ORGANIZE."), "We analyse and ORGANISE.")
 
+    def test_plain_english_swaps(self):
+        from render import plain_english
+        self.assertEqual(plain_english("Concurrently, DBS utilised Kinexys for its inaugural client."),
+                         "At the same time, DBS used Kinexys for its first client.")
+        self.assertEqual(plain_english("In order to settle"), "To settle")
+
     def test_exceptions_untouched(self):
         text = "The size of the prize; regulators seize assets; a citizen; a hazard."
         self.assertEqual(to_british(text), text)
 
     def test_hedging_detected(self):
-        self.assertEqual(find_hedging("It is evident that rails matter."), ["it is evident that"])
+        self.assertEqual(find_hedging("It is evident that settlement matters."), ["it is evident that"])
 
 
 class TestArticleIdStripping(unittest.TestCase):
@@ -123,16 +129,24 @@ class TestRender(unittest.TestCase):
         self.assertIn("[Fnality \\[GBP\\] launch](https://www.ledgerinsights.com/fnality/)", md)
         # Prose normalised to British English, titles untouched
         self.assertIn("synchronisation", md)
-        self.assertIn("utilise", md)
+        self.assertIn("Banks use 24/7 rails", md)  # utilize -> utilise -> use
         self.assertNotIn("fake123", md)
         # Headlines are terminated; publisher shown after the link
         self.assertIn("* **Deposit tokens go live.** Banks", md)
         self.assertIn("(https://www.bankofengland.co.uk/news/dss) *(BoE News)*:", md)
 
-    def test_render_converts_to_html_cards(self):
+    def test_newsletter_is_plain(self):
         md = render_briefing(StrategicAnalysis.model_validate(sample_payload()))
-        html = convert_markdown_to_newsletter_html("s", "d", md)
-        self.assertIn('<h2>1. MACRO VIEW</h2><div class="synthesis-card">', html.replace("\n", ""))
+        html = convert_markdown_to_newsletter_html("s", "2026-11-16", md)
+        # No cards, coloured panels, borders or style sheet; every element styled inline.
+        for banned in ("class=", "<style", "border", "gradient", "box-shadow"):
+            self.assertNotIn(banned, html)
+        self.assertNotRegex(html, r"background:#(?!ffffff)")
+        self.assertIn("16 November 2026", html)
+        self.assertRegex(html, r'<h2 style="[^"]+">1\. MACRO VIEW</h2>')
+        self.assertRegex(html, r'<a style="[^"]+" href="https://www\.bankofengland\.co\.uk/news/dss">')
+        # Pillar synthesis is a normal paragraph, not an italic callout
+        self.assertNotIn("<em", html.split("Central banks prioritise synchronisation")[0][-40:])
 
 
 class TestEditorMerge(unittest.TestCase):
@@ -306,12 +320,6 @@ class TestStateAndPublish(unittest.TestCase):
         }
         kept = run_pipeline.prune_processed_urls(processed, now=now, retention_days=120)
         self.assertEqual(set(kept), {"new", "bad"})
-
-    def test_wrap_section_is_case_and_number_insensitive(self):
-        html = "<h2>2. Macro View</h2><p>x</p><h2>3. Other</h2><p>y</p>"
-        self.assertEqual(wrap_section(html, "MACRO VIEW", "c"),
-                         '<h2>2. Macro View</h2><div class="c"><p>x</p></div><h2>3. Other</h2><p>y</p>')
-        self.assertEqual(wrap_section(html, "MISSING", "c"), html)
 
     def test_parse_recipients(self):
         self.assertEqual(parse_recipients("a@x.com; b@x.com,", default="me@x.com"), ["a@x.com", "b@x.com"])
