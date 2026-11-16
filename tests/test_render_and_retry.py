@@ -201,6 +201,13 @@ class TestRetry(unittest.TestCase):
             self.call(client)
         self.assertEqual(client.calls, ["m1"])
 
+    def test_daily_quota_switches_model_immediately(self):
+        daily = FakeAPIError(429)
+        daily.args = ("429 RESOURCE_EXHAUSTED quotaId GenerateRequestsPerDayPerProjectPerModel-FreeTier",)
+        client = FakeClient([daily, "ok"])
+        self.assertEqual(self.call(client), "ok")
+        self.assertEqual(client.calls, ["m1", "m2"])
+
     def test_network_error_is_retried(self):
         client = FakeClient([ConnectionError("reset"), "ok"])
         self.assertEqual(self.call(client), "ok")

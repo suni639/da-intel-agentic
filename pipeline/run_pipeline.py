@@ -37,6 +37,12 @@ def _error_status(exc):
     return status if isinstance(status, int) else None
 
 
+def _is_daily_quota(exc):
+    """A per-day quota will not recover within our retry window, unlike per-minute limits."""
+    text = str(exc).lower()
+    return "perday" in text or "per day" in text
+
+
 def get_fallback_models():
     configured = get_env_var("GEMINI_FALLBACK_MODELS")
     if configured:
@@ -77,6 +83,9 @@ def generate_content_with_retry(client, model, contents, config=None, max_retrie
                 print(f"Model {current_model} (attempt {attempt}/{max_retries}) failed "
                       f"[status={status}]: {e}")
 
+                if status == 429 and _is_daily_quota(e):
+                    print(f"Daily quota exhausted for {current_model}; switching to next fallback model...")
+                    break
                 if status in SWITCH_MODEL_STATUS:
                     print(f"Switching from {current_model} to next fallback model...")
                     break
