@@ -10,7 +10,8 @@ from google.genai import types
 from pydantic import ValidationError
 
 from common import WORKSPACE_ROOT, get_env_var, log_error
-from render import finalise_briefing
+from enrich import evidence_for_prompt, gather_evidence
+from render import HEDGE_PHRASES, finalise_briefing, find_hedging, prose_text
 from schema import StrategicAnalysis
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -271,45 +272,77 @@ Raw feed articles:
         log_error(f"Macro Strategist API execution failed: {e}")
         return None
 
-EDITOR_PROSE_RULES = """
+EDITOR_PROSE_RULES = f"""
 1. Strict British English spelling (tokenised, tokenisation, utilised, prioritised, standardise, programmes, centre, synchronisation, optimisation).
-2. No AI fluff or hedging: never use phrases such as "appears to", "it is evident that", "underscored by", "it is worth noting", "a testament to", "delve". State operational facts plainly.
-3. Frame every point through institutional banking, treasury rails, balance-sheet liquidity, collateral mobility and market plumbing, for an audience of executives in systemic commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets and FMIs.
-4. Macro view headlines are bold, declarative statements (no trailing full stop needed); details are 1-2 tight sentences.
-5. Pillar syntheses are 1-2 sentences. Development details are one or two concise sentences on what happened and why it matters.
-6. Targets carry a 1-2 sentence rationale for why banks, treasuries or FMIs should track them.
+2. Every development "details" must open with the concrete fact: who did what, with numbers, dates, currencies, counterparties or jurisdictions where the evidence gives them. Then at most one clause on the specific mechanism it affects (e.g. intraday liquidity, collateral eligibility, settlement finality, deposit outflows, capital treatment, cut-off times). No generic benefit claims such as "improves efficiency" or "enhances liquidity" without saying how.
+3. Macro view: each headline is a specific, falsifiable claim drawn from this week's developments (name the institutions or programmes); each detail cites the supporting developments. No headline may be true of any week.
+4. Pillar syntheses: 1-2 sentences naming what changed this week and for whom. Pain points and target rationales: concrete and specific to this week's items.
+5. Banned words and phrases (never use them, in any inflection): {", ".join(HEDGE_PHRASES)}.
+6. Audience: executives in systemic commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets and FMIs. Short declarative sentences; no throat-clearing.
+"""
+
+EVIDENCE_RULES = """
+Factual grounding (most important rule):
+- The "Evidence" block gives, for each article_id, the headline, publisher and an excerpt of the article.
+- A development's "details" may ONLY state facts supported by its own article's headline or excerpt. Remove any claim in the current draft that the evidence does not support (for example an inferred programme, sandbox, amount, date or partner).
+- If the excerpt is empty, restrict the details to what the headline itself states.
+- Macro view, syntheses, pain points and rationales may only rely on facts present in the developments' evidence.
 """
 
 
-def run_editor(client, model, strategic_analysis):
-    """Polish prose in the analysis JSON. Layout is rendered deterministically later."""
-    print("Executing Chief Editor & QC (prose polish)...")
-
-    prompt = f"""
+def _editor_prompt(strategic_analysis, evidence_block, extra=""):
+    return f"""
 You are the Chief Editor for the Institutional Digital Asset Intelligence pipeline.
-Rewrite the prose fields of the strategic analysis JSON below to publication standard, following these rules:
+Rewrite the prose fields of the strategic analysis JSON below to publication standard.
+{EVIDENCE_RULES}
+Style rules:
 {EDITOR_PROSE_RULES}
 Hard constraints:
 - Return the SAME JSON structure with the SAME number of items in every list, in the SAME order.
-- Do NOT change any "url", "title", "source", pillar "name" or target "name" value. Copy them exactly.
+- Do NOT change any "article_id", "url", "title", "source", pillar "name" or target "name" value. Copy them exactly.
 - Only rewrite: macro_view headline/detail, pillar synthesis, development details, structural_pain_points values, target rationale.
+{extra}
+Evidence:
+{json.dumps(evidence_block, ensure_ascii=False, separators=(",", ":"))}
 
 Strategic Analysis JSON:
-{strategic_analysis.model_dump_json(indent=2)}
+{strategic_analysis.model_dump_json()}
 """
 
-    try:
-        edited = generate_analysis(client, model, prompt, "Chief Editor")
-    except Exception as e:
-        log_error(f"Chief Editor API execution failed: {e}. Using unedited strategist prose.")
-        return strategic_analysis
 
-    merged = merge_editor_prose(strategic_analysis, edited)
-    if merged is None:
-        print("WARNING: Editor changed the analysis structure; using unedited strategist prose.",
+def run_editor(client, model, strategic_analysis, evidence_block=None, max_revisions=1):
+    """Ground and polish prose in the analysis JSON. Layout is rendered deterministically later.
+
+    If banned phrases survive the first pass, the editor is asked once more to
+    remove them, naming the offending phrases.
+    """
+    print("Executing Chief Editor & QC (fact-check and prose polish)...")
+    evidence_block = evidence_block or {}
+
+    current, extra = strategic_analysis, ""
+    for revision in range(max_revisions + 1):
+        try:
+            edited = generate_analysis(client, model, _editor_prompt(current, evidence_block, extra),
+                                       "Chief Editor")
+        except Exception as e:
+            log_error(f"Chief Editor API execution failed: {e}. Using previous draft.")
+            return current
+
+        merged = merge_editor_prose(strategic_analysis, edited)
+        if merged is None:
+            print("WARNING: Editor changed the analysis structure; using previous draft.", file=sys.stderr)
+            return current
+        current = merged
+
+        offending = find_hedging(prose_text(current))
+        if not offending:
+            return current
+        print(f"WARNING: editor draft {revision + 1} still uses banned phrases: {', '.join(offending)}",
               file=sys.stderr)
-        return strategic_analysis
-    return merged
+        extra = ("\nRevision request: the previous draft (below) still used these banned phrases: "
+                 + ", ".join(offending)
+                 + ". Rewrite every sentence containing them with concrete, specific wording.\n")
+    return current
 
 
 def merge_editor_prose(original, edited):
@@ -474,9 +507,20 @@ def main():
         f.write(strategic_analysis.model_dump_json(indent=2))
     print(f"Strategic analysis successfully saved to {analysis_path}")
 
-    # Step 3: Chief Editor polishes prose; layout and links are rendered deterministically
-    edited_analysis = run_editor(client, gemini_model, strategic_analysis)
-    allowed_urls = [a.get("url") for a in raw_feed if a.get("url")]
+    # Step 3: gather evidence for the selected articles (publisher URLs + excerpts)
+    _, by_id = index_articles(raw_feed)
+    resolved_urls = []
+    evidence = {}
+    try:
+        evidence, resolved_urls = gather_evidence(strategic_analysis, by_id)
+    except Exception as e:
+        print(f"WARNING: evidence gathering failed ({e}); editor will rely on headlines only",
+              file=sys.stderr)
+    evidence_block = evidence_for_prompt(strategic_analysis, by_id, evidence)
+
+    # Step 4: Chief Editor fact-checks and polishes prose; layout and links are rendered in code
+    edited_analysis = run_editor(client, gemini_model, strategic_analysis, evidence_block)
+    allowed_urls = [a.get("url") for a in raw_feed if a.get("url")] + resolved_urls
     briefing = finalise_briefing(edited_analysis, allowed_urls)
     briefing = validate_and_normalize_links(briefing)
 
@@ -485,7 +529,7 @@ def main():
         f.write(briefing)
     print(f"Briefing successfully compiled to {briefing_path}")
 
-    # Step 4: Run Publishing Layer
+    # Step 5: Run Publishing Layer
     print("Invoking Publishing layer...")
     publish_args = [sys.executable, os.path.join(WORKSPACE_ROOT, "pipeline", "publish.py")]
     if "--dry-run" in sys.argv:

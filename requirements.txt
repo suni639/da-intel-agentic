@@ -4,3 +4,4 @@ google-genai>=1.30,<4
 pydantic>=2.7,<3
 markdown>=3.5,<4
 feedparser>=6.0,<7
+googlenewsdecoder>=0.2.2,<0.3

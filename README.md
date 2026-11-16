@@ -41,7 +41,8 @@ graph TD
 
 3. **The Chief Editor & QC (`editor`)**
    - **Trigger**: Fired immediately upon validation of the strategic analysis.
-   - **Action**: Rewrites only the *prose* fields of the analysis JSON (British English, no hedging). Its output is merged back with URLs, titles and names taken from the strategist, so the editor cannot alter links. If the editor fails or changes the structure, the strategist prose is used.
+   - **Evidence** (`pipeline/enrich.py`): for each selected development, Google News redirect links are resolved to the publisher's own URL, and a short excerpt (meta description + opening paragraphs) is fetched. Failures fall back to the headline.
+   - **Action**: Fact-checks and rewrites only the *prose* fields of the analysis JSON. Every stated fact must be supported by that article's headline or excerpt, and unsupported claims are removed. Details must open with the concrete fact (who, what, amounts, dates) and name the specific mechanism affected. A list of banned filler phrases is enforced; if any survive, the editor is asked once more to remove them. Its output is merged back with URLs, titles and names taken from the strategist, so the editor cannot alter links. If the editor fails or changes the structure, the strategist prose is used.
    - **Rendering & QC** (`pipeline/render.py`): The Markdown brief is rendered deterministically from the JSON, so the 4-section layout is fixed in code. Before rendering:
      - any link not present in the ingested feed is replaced with a Google Search fallback, which stops hallucinated URLs from being published;
      - `-ize`/`-yze` spellings in prose are converted to British `-ise`/`-yse` (source headlines and proper nouns are left verbatim);

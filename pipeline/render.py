@@ -65,10 +65,18 @@ _IZE_EXCEPTIONS = {
 
 _AMERICANISM = re.compile(r"\b([A-Za-z]+?)(i|y)z(e|es|ed|er|ers|ing|ation|ations|ational)\b", re.IGNORECASE)
 
+# Hedging and generic filler that adds no information for an executive reader.
 HEDGE_PHRASES = [
-    "it is evident that", "appears to", "underscored by", "it is worth noting",
-    "it's worth noting", "in today's rapidly evolving", "delve", "a testament to",
-    "navigating the landscape", "game-changer", "game changer",
+    "it is evident that", "appears to", "underscored by", "underscores", "it is worth noting",
+    "it's worth noting", "in today's", "rapidly evolving", "ever-evolving", "delve", "a testament to",
+    "navigating the landscape", "landscape", "game-changer", "game changer",
+    "this signals", "signals a shift", "this signifies", "signifies", "this demonstrates",
+    "this represents", "represents a significant", "significant step", "a major step",
+    "pave the way", "paves the way", "paving the way", "crucial", "pivotal", "poised to",
+    "could potentially", "has the potential to", "the potential to", "unlock", "unlocks",
+    "seamless", "seamlessly", "streamline", "streamlines", "foster", "fosters", "fostering",
+    "robust", "cutting-edge", "transformative", "revolutionise", "revolutionize",
+    "ushers in", "a new era", "the future of", "showcases", "highlights the importance",
 ]
 
 
@@ -105,9 +113,26 @@ def apply_british_english(analysis: StrategicAnalysis) -> None:
         target.rationale = to_british(target.rationale)
 
 
-def find_hedging(markdown_text: str) -> List[str]:
-    lowered = markdown_text.lower()
-    return [p for p in HEDGE_PHRASES if p in lowered]
+_HEDGE_RE = [(p, re.compile(r"\b" + re.escape(p) + r"\b", re.IGNORECASE)) for p in HEDGE_PHRASES]
+
+
+def find_hedging(text: str) -> List[str]:
+    return [p for p, rx in _HEDGE_RE if rx.search(text)]
+
+
+def prose_text(analysis: StrategicAnalysis) -> str:
+    """All model-written prose (not titles or names), for QC checks."""
+    parts = []
+    for point in analysis.macro_view:
+        parts += [point.headline, point.detail]
+    for pillar in analysis.pillars:
+        parts.append(pillar.synthesis)
+        parts += [dev.details for dev in pillar.developments]
+    pp = analysis.structural_pain_points
+    parts += [pp.interoperability_silos, pp.balance_sheet_and_liquidity_friction,
+              pp.post_trade_plumbing_constraints]
+    parts += [t.rationale for t in analysis.new_high_signal_targets]
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +215,7 @@ def finalise_briefing(analysis: StrategicAnalysis, allowed_urls: Iterable[str]) 
         print(f"WARNING: {warning}", file=sys.stderr)
     apply_british_english(analysis)
     markdown_text = render_briefing(analysis)
-    hedges = find_hedging(markdown_text)
+    hedges = find_hedging(prose_text(analysis))
     if hedges:
         print(f"WARNING: QC hedging phrases present: {', '.join(hedges)}", file=sys.stderr)
     return markdown_text
