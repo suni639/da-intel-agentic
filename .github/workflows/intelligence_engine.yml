@@ -12,9 +12,6 @@ on:
         type: boolean
         default: true
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 permissions:
   contents: write
 
@@ -27,14 +24,14 @@ jobs:
 
     steps:
       - name: Checkout main repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: main-repo
           # Fetch all history so git push works cleanly
           fetch-depth: 0
 
       - name: Checkout Hugo repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         continue-on-error: true
         with:
           repository: suni639/sunilkandola-hugo
@@ -48,7 +45,7 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -107,7 +104,7 @@ jobs:
 
       - name: Upload pipeline logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pipeline-logs
           path: |

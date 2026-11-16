@@ -309,10 +309,31 @@ def _oneline(text: str) -> str:
     return " ".join(strip_article_ids(text).split())
 
 
+# Reader-facing titles. The schema/prompt names stay stable; only the display changes.
+SECTION_TITLES = {
+    "macro": "The week in brief",
+    "pillars": "What happened",
+    "pain_points": "What is holding things back",
+    "targets": "Worth watching",
+}
+PILLAR_TITLES = {
+    PillarName.BANKING: "Banks and payments",
+    PillarName.ASSET_MANAGEMENT: "Funds and tokenised assets",
+    PillarName.SOVEREIGN: "Central banks and public infrastructure",
+    PillarName.REGULATORY: "Regulation and law",
+    PillarName.FRONTIER: "New technology",
+}
+PAIN_POINT_LABELS = {
+    "interop": "Separate networks that don't connect",
+    "liquidity": "Liquidity and balance sheets",
+    "post_trade": "Settlement and post-trade",
+}
+
+
 def render_briefing(analysis: StrategicAnalysis) -> str:
     lines: List[str] = []
 
-    lines.append("## 1. MACRO VIEW")
+    lines.append(f"## {SECTION_TITLES['macro']}")
     for point in analysis.macro_view:
         headline = _oneline(point.headline).strip("* ")
         if headline and headline[-1] not in ".!?:":
@@ -320,7 +341,7 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
         lines.append(f"* **{headline}** {_oneline(point.detail)}")
     lines.append("")
 
-    lines.append("## 2. CORE PILLAR DEVELOPMENTS")
+    lines.append(f"## {SECTION_TITLES['pillars']}")
     lines.append("")
     by_name = {}
     for pillar in analysis.pillars:
@@ -337,7 +358,7 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
             pillar.developments = [d for d in pillar.developments if not d.stale]
         if not pillar or not pillar.developments:
             continue
-        lines.append(f"### {name.value}")
+        lines.append(f"### {PILLAR_TITLES.get(name, name.value)}")
         if pillar.synthesis.strip():
             lines.append(_oneline(pillar.synthesis).strip("* "))
         lines.append("")
@@ -348,13 +369,13 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
         lines.append("")
 
     pp = analysis.structural_pain_points
-    lines.append("## 3. STRUCTURAL & OPERATIONAL PAIN POINTS")
-    lines.append(f"* **Interoperability Silos:** {_oneline(pp.interoperability_silos)}")
-    lines.append(f"* **Balance Sheet & Liquidity Friction:** {_oneline(pp.balance_sheet_and_liquidity_friction)}")
-    lines.append(f"* **Post-Trade Plumbing Constraints:** {_oneline(pp.post_trade_plumbing_constraints)}")
+    lines.append(f"## {SECTION_TITLES['pain_points']}")
+    lines.append(f"* **{PAIN_POINT_LABELS['interop']}:** {_oneline(pp.interoperability_silos)}")
+    lines.append(f"* **{PAIN_POINT_LABELS['liquidity']}:** {_oneline(pp.balance_sheet_and_liquidity_friction)}")
+    lines.append(f"* **{PAIN_POINT_LABELS['post_trade']}:** {_oneline(pp.post_trade_plumbing_constraints)}")
     lines.append("")
 
-    lines.append("## 4. NEW HIGH-SIGNAL TARGETS FOR TRACKING")
+    lines.append(f"## {SECTION_TITLES['targets']}")
     for target in analysis.new_high_signal_targets:
         lines.append(f"* {_link(target.name, target.url, bold=True)}: {_oneline(target.rationale)}")
     lines.append("")
