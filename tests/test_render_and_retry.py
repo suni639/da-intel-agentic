@@ -116,6 +116,9 @@ class TestRender(unittest.TestCase):
         self.assertIn("synchronisation", md)
         self.assertIn("utilise", md)
         self.assertNotIn("fake123", md)
+        # Headlines are terminated; publisher shown after the link
+        self.assertIn("* **Deposit tokens go live.** Banks", md)
+        self.assertIn("(https://www.bankofengland.co.uk/news/dss) *(BoE News)*:", md)
 
     def test_render_converts_to_html_cards(self):
         md = render_briefing(StrategicAnalysis.model_validate(sample_payload()))

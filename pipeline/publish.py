@@ -121,7 +121,7 @@ def convert_markdown_to_newsletter_html(subject, date_str, markdown_content):
       font-size: 14px;
       color: #475569;
     }
-    .content p em {
+    .content > p > em:only-child {
       display: block;
       font-style: normal;
       background-color: #f8fafc;

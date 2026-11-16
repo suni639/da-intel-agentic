@@ -139,6 +139,8 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
     lines.append("## 1. MACRO VIEW")
     for point in analysis.macro_view:
         headline = _oneline(point.headline).strip("* ")
+        if headline and headline[-1] not in ".!?:":
+            headline += "."
         lines.append(f"* **{headline}** {_oneline(point.detail)}")
     lines.append("")
 
@@ -162,7 +164,9 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
             lines.append(f"*{_oneline(pillar.synthesis).strip('* ')}*")
         lines.append("")
         for dev in pillar.developments:
-            lines.append(f"* {_link(dev.title, dev.url)}: {_oneline(dev.details)}")
+            source = _oneline(dev.source)
+            attribution = f" *({source})*" if source and source.lower() not in dev.title.lower() else ""
+            lines.append(f"* {_link(dev.title, dev.url)}{attribution}: {_oneline(dev.details)}")
         lines.append("")
 
     pp = analysis.structural_pain_points

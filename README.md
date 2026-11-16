@@ -22,14 +22,21 @@ graph TD
 1. **The Research Scout (`scout`)**
    - **Trigger**: Instantiated via scheduler or manually.
    - **Action**: Invokes `pipeline/ingestion.py` to scrape high-signal RSS feeds (CoinDesk, The Block, the Bank for International Settlements, Ledger Insights, the European Central Bank, and the Bank of England).
-   - **Feeds**: CoinDesk, The Block, BIS and Ledger Insights are ingested unfiltered; Bank of England, FCA, HM Treasury and ECB feeds are gated by an institutional digital-asset keyword list. Per-feed HTTP status and item counts are logged to stderr so a blocked or empty feed is visible in the run log.
+   - **Sources** (configured in `pipeline/feeds.py`), chosen for relevance rather than brand:
+     - **Targeted Google News searches** (UK edition, last 7 days) for each core theme: tokenised deposits, wholesale settlement networks (Fnality, Kinexys, Canton, Partior, Agorá), the UK Digital Securities Sandbox and BoE, wholesale CBDCs, stablecoin regulation, tokenised funds and RWAs, FMIs (Euroclear, DTCC, Swift and others), and UK banks. These cover the whole week however busy the news is.
+     - **Specialist press** read through site-restricted searches: Ledger Insights (its own feed serves only one item) and Finextra (which blocks automated clients).
+     - **Primary sources**: Bank of England, FCA, HM Treasury, ECB, BIS (central bank speeches, FSI), Federal Reserve, FSB, ESMA, EBA, IOSCO and HKMA, filtered to digital-asset and market-infrastructure topics.
+     - **General press**, narrowed by keyword filters: CoinDesk and The Block (institutional stories only), and Banking Dive, Payments Dive and Global Custodian (digital-asset stories only).
+   - **Filtering & limits**: word-boundary keyword filters per source type; items older than 8 days are skipped (`INGEST_LOOKBACK_DAYS`); duplicates across feeds are removed by URL and headline; each feed is capped at 15 items (`INGEST_MAX_ITEMS_PER_FEED`). Per-feed counts are logged on every run.
+   - **Feed health**: `pipeline/feed_check.py` (workflow `feed_health.yml`) probes every source when the feed configuration changes, and every Sunday evening, failing the job if an active feed breaks. New sources are added with `candidate=True` and switched on once the check shows them healthy.
    - **Output**: Writes combined raw/enriched feed items to `shared_artifacts/raw_enriched_feed.json`.
 
 2. **The Macro Strategist (`strategist`)**
    - **Trigger**: Fired immediately upon validation of the raw feed.
    - **Action**: Applies a strict institutional "Noise Gate" filter to remove retail speculative noise (spot prices, memecoins, consumer wallets, and retail volumes).
    - **Categorisation**: Organises approved developments into four core pillars and synthesises their impact on cross-border liquidity and capital efficiency.
-   - **Schema**: Gemini is called with a Pydantic `response_schema` (`pipeline/schema.py`), and the response is validated before use. Pillar names are an enum, and URLs must be copied from the ingested feed.
+   - **Selection**: picks the 12–20 most significant developments (at most 5 per pillar), merging duplicate coverage of the same event.
+   - **Schema**: Gemini is called with a Pydantic `response_schema` (`pipeline/schema.py`), and the response is validated before use; truncated or invalid output is regenerated. Pillar names are an enum. Articles are cited by short id (`a17`), and the code fills in the title, publisher and URL from the feed, so the model never copies URLs.
    - **Output**: Writes the structured payload to `shared_artifacts/strategic_analysis.json`.
 
 3. **The Chief Editor & QC (`editor`)**
@@ -112,6 +119,7 @@ To execute the entire pipeline, including scraping feeds and compiling the brief
 ```bash
 python pipeline/run_pipeline.py --dry-run
 ```
+In GitHub Actions, run the workflow manually (*Actions → Run workflow*) with **dry_run** ticked, which is the default. The generated brief is shown on the run's summary page; no email is sent, nothing is pushed to Hugo and no state is committed.
 
 ---
 
