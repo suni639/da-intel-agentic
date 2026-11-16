@@ -11,7 +11,7 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 
-from feeds import INSTITUTIONAL_KEYWORDS, PUBLIC_SECTOR_KEYWORDS, active_feeds
+from feeds import DIGITAL_ASSET_KEYWORDS, INSTITUTIONAL_KEYWORDS, PUBLIC_SECTOR_KEYWORDS, active_feeds
 
 WORKSPACE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_PATH = os.path.join(WORKSPACE_DIR, "system_state.json")
@@ -168,6 +168,7 @@ FILTERS = {
     None: None,
     "public_sector": PUBLIC_SECTOR_KEYWORDS,
     "institutional": INSTITUTIONAL_KEYWORDS,
+    "digital_asset": DIGITAL_ASSET_KEYWORDS,
 }
 
 

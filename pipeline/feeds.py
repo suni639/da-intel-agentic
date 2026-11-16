@@ -4,7 +4,9 @@ Each feed has a ``filter`` mode:
   - None:            ingest every item (highly specialised sources only)
   - "public_sector": keep items matching PUBLIC_SECTOR_KEYWORDS (regulators, central banks)
   - "institutional": keep items matching the narrower INSTITUTIONAL_KEYWORDS
-                     (general crypto/fintech press, where most items are retail noise)
+                     (crypto press, where everything is digital-asset but most is retail noise)
+  - "digital_asset": keep items matching DIGITAL_ASSET_KEYWORDS
+                     (banking/payments press, where everything is banking but little is digital-asset)
 
 ``candidate=True`` feeds are not ingested; they are only probed by
 ``pipeline/feed_check.py`` so they can be verified before being switched on.
@@ -60,9 +62,24 @@ INSTITUTIONAL_KEYWORDS = [
 ]
 
 
+# For general banking / payments / custody press: require a digital-asset nexus.
+DIGITAL_ASSET_KEYWORDS = [
+    "tokenised", "tokenized", "tokenisation", "tokenization", "tokenise", "tokenize",
+    "token", "tokens", "deposit token", "stablecoin", "stablecoins", "cbdc", "digital asset",
+    "digital assets", "digital currency", "digital pound", "digital euro", "digital dollar",
+    "crypto", "cryptocurrency", "blockchain", "dlt", "distributed ledger", "on-chain", "onchain",
+    "smart contract", "web3", "kinexys", "fnality", "canton", "partior", "usdc", "rlusd",
+]
+
 FEEDS: List[Feed] = [
     # --- Specialist institutional press -----------------------------------
-    Feed("Ledger Insights", "https://www.ledgerinsights.com/feed/"),
+    # Ledger Insights' own feed only ever serves its latest item, and Finextra
+    # refuses automated clients, so both are read via site-restricted searches.
+    Feed("Ledger Insights", "https://news.google.com/rss/search?q="
+         + quote_plus("site:ledgerinsights.com when:7d") + "&hl=en-GB&gl=GB&ceid=GB:en"),
+    Feed("Finextra (digital assets)", "https://news.google.com/rss/search?q="
+         + quote_plus("site:finextra.com (tokenisation OR tokenised OR stablecoin OR CBDC OR "
+                      "blockchain OR DLT OR \"digital assets\") when:7d") + "&hl=en-GB&gl=GB&ceid=GB:en"),
 
     # --- Targeted searches: cover the full week regardless of feed volume --
     google_news("News: Tokenised deposits & bank money",
@@ -81,6 +98,9 @@ FEEDS: List[Feed] = [
     google_news("News: Tokenised funds & RWAs",
                 '"tokenized fund" OR "tokenised fund" OR "tokenized treasury" OR '
                 '"tokenised money market fund" OR "tokenized money market fund" OR "real-world assets" bank'),
+    google_news("News: Market infrastructure & FMIs",
+                '(Euroclear OR Clearstream OR DTCC OR Swift OR LSEG OR "Deutsche Börse") '
+                '(tokenisation OR tokenization OR "digital assets" OR DLT OR blockchain OR stablecoin)'),
     google_news("News: UK banks & digital assets",
                 '(Lloyds OR Barclays OR HSBC OR NatWest OR "Standard Chartered") '
                 '(tokenisation OR tokenization OR stablecoin OR "digital assets" OR blockchain)'),
@@ -98,39 +118,33 @@ FEEDS: List[Feed] = [
          filter="public_sector"),
     Feed("ECB Press", "https://www.ecb.europa.eu/rss/press.xml", filter="public_sector"),
 
-    # --- Candidates (probed by feed_check.py, not ingested yet) -----------
-    Feed("BIS Press", "https://www.bis.org/doclist/all_pressrels.rss", filter="public_sector", candidate=True),
-    Feed("BIS CPMI", "https://www.bis.org/doclist/cpmi_publs.rss", filter="public_sector", candidate=True),
-    Feed("BIS Speeches", "https://www.bis.org/doclist/cbspeeches.rss", filter="public_sector", candidate=True),
-    Feed("BIS Innovation Hub", "https://www.bis.org/doclist/bisih_publs.rss", filter="public_sector",
-         candidate=True),
+    # --- Global public sector (verified by feed_check) ---------------------
+    Feed("BIS Central Bank Speeches", "https://www.bis.org/doclist/cbspeeches.rss", filter="public_sector"),
     Feed("Federal Reserve Press", "https://www.federalreserve.gov/feeds/press_all.xml",
+         filter="public_sector"),
+    Feed("FSB", "https://www.fsb.org/feed/", filter="public_sector"),
+    Feed("ESMA", "https://www.esma.europa.eu/rss.xml", filter="public_sector"),
+
+    # --- Banking, payments & custody press (verified by feed_check) --------
+    Feed("Banking Dive", "https://www.bankingdive.com/feeds/news/", filter="digital_asset"),
+    Feed("Payments Dive", "https://www.paymentsdive.com/feeds/news/", filter="digital_asset"),
+    Feed("Global Custodian", "https://www.globalcustodian.com/feed/", filter="digital_asset"),
+
+    # --- Candidates (probed by feed_check.py, not ingested yet) -----------
+    Feed("HKMA Press", "https://www.hkma.gov.hk/eng/other-information/rss/rss_press-release.xml",
          filter="public_sector", candidate=True),
-    Feed("FSB", "https://www.fsb.org/feed/", filter="public_sector", candidate=True),
-    Feed("ESMA", "https://www.esma.europa.eu/rss.xml", filter="public_sector", candidate=True),
-    Feed("Finextra Headlines", "https://www.finextra.com/rss/headlines.aspx", filter="institutional",
+    Feed("EBA News", "https://www.eba.europa.eu/news-press/news/rss.xml", filter="public_sector",
          candidate=True),
-    Feed("Global Custodian", "https://www.globalcustodian.com/feed/", filter="institutional", candidate=True),
-    Feed("The TRADE", "https://www.thetradenews.com/feed/", filter="institutional", candidate=True),
-    Feed("Banking Dive", "https://www.bankingdive.com/feeds/news/", filter="institutional", candidate=True),
-    Feed("Payments Dive", "https://www.paymentsdive.com/feeds/news/", filter="institutional", candidate=True),
-    Feed("DL News", "https://www.dlnews.com/arc/outboundfeeds/rss/", filter="institutional", candidate=True),
-    Feed("Blockworks", "https://blockworks.co/feed", filter="institutional", candidate=True),
+    Feed("IOSCO", "https://www.iosco.org/rss/rss.xml", filter="public_sector", candidate=True),
+    Feed("BIS FSI", "https://www.bis.org/doclist/bis_fsi_publs.rss", filter="public_sector", candidate=True),
+    Feed("BIS Management Speeches", "https://www.bis.org/doclist/mgmtspeeches.rss", filter="public_sector",
+         candidate=True),
 ]
 
 # Pages scanned by feed_check.py to discover feed URLs we don't know yet.
 DISCOVERY_PAGES = [
-    "https://www.bis.org/rss/index.htm",
-    "https://www.bis.org/",
-    "https://www.mas.gov.sg/news",
-    "https://www.hkma.gov.hk/eng/other-information/rss/",
-    "https://www.esma.europa.eu/press-news/esma-news",
-    "https://www.eba.europa.eu/",
-    "https://www.iosco.org/",
-    "https://www.dtcc.com/news",
-    "https://www.euroclear.com/newsandinsights/en.html",
-    "https://www.swift.com/news-events/news",
-    "https://www.finextra.com/rss/rss.aspx",
+    "https://www.dtcc.com/rss-feeds",
+    "https://www.mas.gov.sg/rss",
 ]
 
 
