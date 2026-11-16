@@ -19,7 +19,7 @@ STATE_PATH = os.path.join(WORKSPACE_DIR, "system_state.json")
 # Only consider items published within this window (undated items are kept).
 LOOKBACK_DAYS = int(os.environ.get("INGEST_LOOKBACK_DAYS", "8"))
 # Bound the prompt size: per-feed cap and per-article text length.
-MAX_ITEMS_PER_FEED = int(os.environ.get("INGEST_MAX_ITEMS_PER_FEED", "25"))
+MAX_ITEMS_PER_FEED = int(os.environ.get("INGEST_MAX_ITEMS_PER_FEED", "15"))
 CONTENT_CHARS = 800
 
 # Load state history if present to ensure proper deduplication
@@ -117,6 +117,9 @@ def parse_entries(source_name, feed_url, content, keyword_filter=None, now=None,
         if not summary and entry.get("content"):
             summary = entry["content"][0].get("value", "")
         text = _clean_text(summary)[:CONTENT_CHARS]
+        # Search-aggregator summaries just repeat the headline; drop them to save tokens.
+        if text and _title_key(text).startswith(_title_key(title)):
+            text = ""
 
         published = _entry_datetime(entry)
         if published and published < cutoff:

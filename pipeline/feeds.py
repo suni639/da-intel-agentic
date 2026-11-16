@@ -130,22 +130,21 @@ FEEDS: List[Feed] = [
     Feed("Payments Dive", "https://www.paymentsdive.com/feeds/news/", filter="digital_asset"),
     Feed("Global Custodian", "https://www.globalcustodian.com/feed/", filter="digital_asset"),
 
-    # --- Candidates (probed by feed_check.py, not ingested yet) -----------
     Feed("HKMA Press", "https://www.hkma.gov.hk/eng/other-information/rss/rss_press-release.xml",
-         filter="public_sector", candidate=True),
-    Feed("EBA News", "https://www.eba.europa.eu/news-press/news/rss.xml", filter="public_sector",
-         candidate=True),
-    Feed("IOSCO", "https://www.iosco.org/rss/rss.xml", filter="public_sector", candidate=True),
-    Feed("BIS FSI", "https://www.bis.org/doclist/bis_fsi_publs.rss", filter="public_sector", candidate=True),
-    Feed("BIS Management Speeches", "https://www.bis.org/doclist/mgmtspeeches.rss", filter="public_sector",
-         candidate=True),
+         filter="public_sector"),
+    Feed("EBA News", "https://www.eba.europa.eu/news-press/news/rss.xml", filter="public_sector"),
+    Feed("IOSCO", "https://www.iosco.org/rss/rss.xml", filter="public_sector"),
+    Feed("BIS FSI", "https://www.bis.org/doclist/bis_fsi_publs.rss", filter="public_sector"),
+
+    # --- Candidates (probed by feed_check.py, not ingested yet) -----------
+    # Add new sources here with candidate=True; promote once feed_check shows them healthy.
 ]
 
 # Pages scanned by feed_check.py to discover feed URLs we don't know yet.
-DISCOVERY_PAGES = [
-    "https://www.dtcc.com/rss-feeds",
-    "https://www.mas.gov.sg/rss",
-]
+# MAS publishes no RSS feed; its programmes (Project Guardian etc.) are covered by
+# the wholesale CBDC search. Euroclear and Swift block automated clients and are
+# covered by the FMI search.
+DISCOVERY_PAGES: List[str] = []
 
 
 def active_feeds() -> List[Feed]:

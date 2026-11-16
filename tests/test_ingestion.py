@@ -55,6 +55,13 @@ class TestParseEntries(unittest.TestCase):
         self.assertEqual(out[0]["title"], "Fnality goes live")
         self.assertEqual(out[0]["source"], "Financial Times")
 
+    def test_headline_echo_summary_dropped(self):
+        content = rss([("Fnality goes live - FT", "https://news.google.com/rss/articles/abc",
+                        "Sun, 15 Nov 2026 09:00:00 GMT", "&lt;a href='x'&gt;Fnality goes live&lt;/a&gt; FT",
+                        '<source url="https://ft.com">FT</source>')])
+        out = ingestion.parse_entries("News: x", "https://news.google.com/rss", content, now=NOW)
+        self.assertEqual(out[0]["content"], "")
+
 
 class TestCollect(unittest.TestCase):
     def test_dedup_across_feeds_and_cap(self):

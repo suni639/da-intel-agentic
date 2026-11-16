@@ -123,11 +123,45 @@ def parse_analysis(response):
         return StrategicAnalysis.model_validate(obj)
 
 
+MAX_OUTPUT_TOKENS = 32768
+STRUCTURED_ATTEMPTS = 3
+
+
 def _json_config():
     return types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=StrategicAnalysis,
+        max_output_tokens=MAX_OUTPUT_TOKENS,
     )
+
+
+def _finish_reason(response):
+    try:
+        reason = response.candidates[0].finish_reason
+        return getattr(reason, "name", None) or str(reason)
+    except Exception:
+        return None
+
+
+def generate_analysis(client, model, prompt, label, attempts=STRUCTURED_ATTEMPTS):
+    """Generate and validate a StrategicAnalysis, re-asking on truncated/invalid JSON.
+
+    Transport-level retries live in generate_content_with_retry; this loop handles
+    the case where the API call succeeds but the payload is cut off or malformed.
+    """
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        response = generate_content_with_retry(
+            client=client, model=model, contents=prompt, config=_json_config()
+        )
+        try:
+            return parse_analysis(response)
+        except (ValueError, ValidationError) as e:  # JSONDecodeError is a ValueError
+            last_error = e
+            print(f"WARNING: {label} returned unusable JSON (attempt {attempt}/{attempts}, "
+                  f"finish_reason={_finish_reason(response)}, "
+                  f"length={len(getattr(response, 'text', '') or '')} chars): {e}", file=sys.stderr)
+    raise last_error
 
 
 def run_strategist(client, model, articles):
@@ -179,6 +213,10 @@ Also analyse **Structural & Operational Pain Points** across:
 Also select **4-6 New High-Signal Targets for Tracking**:
 Dynamic, week-specific standout entities, pilots, or legislative bills directly emerging from this week's news with URL and 1-2 sentence institutional rationale.
 
+Selection discipline (this is an executive brief, not a news digest):
+- Select only the 12-20 most significant developments in total across all pillars, and at most 5 per pillar. Prefer primary-source and specialist coverage; merge multiple articles about the same event into one development.
+- Keep every "details" and "synthesis" to at most two sentences.
+
 Output contract (the response schema is enforced; follow these content rules):
 - "pillars" is a list; each entry's "name" must be one of the five Core Pillars above. Omit a pillar entirely if it has no qualifying developments.
 - Every development "url" MUST be copied exactly from the "url" field of a raw feed article below. Never invent, shorten or alter URLs. If a development has no matching feed article, do not include it.
@@ -191,10 +229,7 @@ Raw feed articles:
 """
 
     try:
-        response = generate_content_with_retry(
-            client=client, model=model, contents=prompt, config=_json_config()
-        )
-        return parse_analysis(response)
+        return generate_analysis(client, model, prompt, "Macro Strategist")
     except Exception as e:
         log_error(f"Macro Strategist API execution failed: {e}")
         return None
@@ -227,10 +262,7 @@ Strategic Analysis JSON:
 """
 
     try:
-        response = generate_content_with_retry(
-            client=client, model=model, contents=prompt, config=_json_config()
-        )
-        edited = parse_analysis(response)
+        edited = generate_analysis(client, model, prompt, "Chief Editor")
     except Exception as e:
         log_error(f"Chief Editor API execution failed: {e}. Using unedited strategist prose.")
         return strategic_analysis

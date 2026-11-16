@@ -199,6 +199,23 @@ class TestRetry(unittest.TestCase):
         self.assertIsInstance(run_pipeline.parse_analysis(resp), StrategicAnalysis)
 
 
+class TestStructuredRetry(unittest.TestCase):
+    def test_truncated_json_is_regenerated(self):
+        import json
+        good = SimpleNamespace(parsed=None, text=json.dumps(sample_payload()), candidates=[])
+        truncated = SimpleNamespace(parsed=None, text='{"macro_view": [{"headline": "cut', candidates=[])
+        client = FakeClient([truncated, good])
+        result = run_pipeline.generate_analysis(client, "m1", "prompt", "Test", attempts=2)
+        self.assertIsInstance(result, StrategicAnalysis)
+        self.assertEqual(len(client.calls), 2)
+
+    def test_gives_up_after_attempts(self):
+        truncated = SimpleNamespace(parsed=None, text='{"macro_view": [', candidates=[])
+        client = FakeClient([truncated, truncated])
+        with self.assertRaises(ValueError):
+            run_pipeline.generate_analysis(client, "m1", "prompt", "Test", attempts=2)
+
+
 class TestClient(unittest.TestCase):
     def test_client_uses_v1beta_for_json_mode(self):
         os.environ.pop("GEMINI_API_VERSION", None)
