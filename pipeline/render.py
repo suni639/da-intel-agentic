@@ -154,8 +154,17 @@ def _link(text: str, url: str, bold: bool = False) -> str:
     return f"[{label}]({_link_url(url)})"
 
 
+# Internal article ids (a17) must never reach readers, e.g. "(a128)" or "(a2, a49)".
+_ARTICLE_ID_RE = re.compile(r"\s*[\(\[]\s*(?:articles?(?:[_ ]ids?)?:?\s*)?a\d+(?:(?:\s*[,;/&]\s*(?:and\s+)?|\s+and\s+)a\d+)*\s*[\)\]]")
+
+
+def strip_article_ids(text: str) -> str:
+    text = _ARTICLE_ID_RE.sub("", text or "")
+    return re.sub(r"\s+([.,;:])", r"\1", text)
+
+
 def _oneline(text: str) -> str:
-    return " ".join((text or "").split())
+    return " ".join(strip_article_ids(text).split())
 
 
 def render_briefing(analysis: StrategicAnalysis) -> str:

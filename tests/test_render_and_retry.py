@@ -98,6 +98,15 @@ class TestBritishEnglish(unittest.TestCase):
         self.assertEqual(find_hedging("It is evident that rails matter."), ["it is evident that"])
 
 
+class TestArticleIdStripping(unittest.TestCase):
+    def test_ids_removed_from_prose(self):
+        from render import strip_article_ids
+        self.assertEqual(strip_article_ids("DBS launched transfers (a128). Next (a2, a49) and [a7]."),
+                         "DBS launched transfers. Next and.")
+        self.assertEqual(strip_article_ids("Banks (articles a1 and a2) moved"), "Banks moved")
+        self.assertEqual(strip_article_ids("Pillar (a) and a12 notes"), "Pillar (a) and a12 notes")
+
+
 class TestRender(unittest.TestCase):
     def test_layout_and_links(self):
         analysis = StrategicAnalysis.model_validate(sample_payload())

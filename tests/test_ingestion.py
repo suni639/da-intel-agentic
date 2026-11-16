@@ -55,6 +55,12 @@ class TestParseEntries(unittest.TestCase):
         self.assertEqual(out[0]["title"], "Fnality goes live")
         self.assertEqual(out[0]["source"], "Financial Times")
 
+    def test_url_publisher_normalised(self):
+        content = rss([("Group launched - https://genfinity.io/", "https://news.google.com/rss/articles/x",
+                        "Sun, 15 Nov 2026 09:00:00 GMT", "", '<source url="https://genfinity.io">https://www.genfinity.io/</source>')])
+        out = ingestion.parse_entries("News: x", "https://news.google.com/rss", content, now=NOW)
+        self.assertEqual(out[0]["source"], "genfinity.io")
+
     def test_headline_echo_summary_dropped(self):
         content = rss([("Fnality goes live - FT", "https://news.google.com/rss/articles/abc",
                         "Sun, 15 Nov 2026 09:00:00 GMT", "&lt;a href='x'&gt;Fnality goes live&lt;/a&gt; FT",

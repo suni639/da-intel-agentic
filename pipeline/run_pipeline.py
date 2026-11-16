@@ -241,7 +241,7 @@ Core Pillars:
 Write a custom synthesis sentence for each pillar explaining how these developments alter cross-border liquidity, commercial bank balance sheets, or capital efficiency.
 
 Also synthesise the **Macro View**:
-Provide 4-6 bold, declarative macro observations synthesising the systemic implications for bank balance sheets, liquidity, and wholesale market infrastructure.
+Provide 4-5 bold, declarative macro observations synthesising the systemic implications for bank balance sheets, liquidity, and wholesale market infrastructure. Each is a distinct insight connecting several developments, not a list of them; never mention article ids in prose.
 
 Also analyse **Structural & Operational Pain Points** across:
 - interoperability_silos: Where disparate networks, private ledgers, or stablecoin standards fail to bridge cleanly, creating fragmented liquidity pools.
@@ -275,7 +275,8 @@ Raw feed articles:
 EDITOR_PROSE_RULES = f"""
 1. Strict British English spelling (tokenised, tokenisation, utilised, prioritised, standardise, programmes, centre, synchronisation, optimisation).
 2. Every development "details" must open with the concrete fact: who did what, with numbers, dates, currencies, counterparties or jurisdictions where the evidence gives them. Then at most one clause on the specific mechanism it affects (e.g. intraday liquidity, collateral eligibility, settlement finality, deposit outflows, capital treatment, cut-off times). No generic benefit claims such as "improves efficiency" or "enhances liquidity" without saying how.
-3. Macro view: each headline is a specific, falsifiable claim drawn from this week's developments (name the institutions or programmes); each detail cites the supporting developments. No headline may be true of any week.
+3. Macro view: synthesis, not a list. Each headline is one specific, falsifiable claim about what this week's developments mean together (name the institutions or programmes); each detail is 1-2 sentences on the implication for bank balance sheets, liquidity or market plumbing. Do not enumerate developments, and do not repeat a development already used in another macro point. No headline may be true of any week.
+7. Never mention article ids (such as a17) anywhere in the prose; refer to institutions and events by name.
 4. Pillar syntheses: 1-2 sentences naming what changed this week and for whom. Pain points and target rationales: concrete and specific to this week's items.
 5. Banned words and phrases (never use them, in any inflection): {", ".join(HEDGE_PHRASES)}.
 6. Audience: executives in systemic commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets and FMIs. Short declarative sentences; no throat-clearing.

@@ -5,7 +5,7 @@ import os
 import re
 import sys
 from functools import lru_cache
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import feedparser
 import requests
@@ -108,10 +108,14 @@ def parse_entries(source_name, feed_url, content, keyword_filter=None, now=None,
         src = entry.get("source")
         if isinstance(src, dict) and src.get("title"):
             # Google News: "Headline - Publisher"; keep the real publisher name.
-            publisher = src["title"]
-            suffix = f" - {publisher}"
+            raw_publisher = src["title"]
+            suffix = f" - {raw_publisher}"
             if title.endswith(suffix):
                 title = title[: -len(suffix)]
+            publisher = raw_publisher
+            if publisher.startswith(("http://", "https://")):
+                host = urlparse(publisher).hostname or publisher
+                publisher = host[4:] if host.startswith("www.") else host
 
         summary = entry.get("summary") or ""
         if not summary and entry.get("content"):
