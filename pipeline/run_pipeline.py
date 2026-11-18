@@ -11,8 +11,10 @@ from pydantic import ValidationError
 
 from common import WORKSPACE_ROOT, get_env_var, log_error
 from enrich import evidence_for_prompt, gather_evidence
-from render import (HEDGE_PHRASES, JARGON_SUGGESTIONS, MAX_HEADLINE_WORDS, finalise_briefing,
-                    find_hedging, long_headlines, prose_text)
+from feeds import source_quality
+from render import (HEDGE_PHRASES, JARGON_SUGGESTIONS, MAX_HEADLINE_WORDS, MAX_WORDS, TARGET_WORDS,
+                    brief_word_count, finalise_briefing, find_hedging, long_headlines, prose_text,
+                    subject_line)
 from schema import StrategicAnalysis
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -181,7 +183,8 @@ def index_articles(raw_feed):
     for i, article in enumerate(raw_feed, start=1):
         aid = f"a{i}"
         by_id[aid] = article
-        item = {"id": aid, "title": article.get("title", ""), "source": article.get("source", "")}
+        item = {"id": aid, "title": article.get("title", ""), "source": article.get("source", ""),
+                "quality": source_quality(article.get("source", ""))}
         if article.get("published"):
             item["published"] = article["published"][:10]
         if article.get("content"):
@@ -241,34 +244,36 @@ Allowed Content Attributes (High-Signal Pass):
 - Frontier & Emerging Innovations: Genuine technological advancements in digital assets (agentic payments, programmable payments, privacy/ZK layers, smart contract financial logic, cross-chain messaging).
 - Post-Trade Utilities & Interoperability: Delivery vs Payment (DvP), Payment vs Payment (PvP), atomic settlement mechanics, Euroclear/DTCC/Swift orchestration.
 
-Core Pillars:
-1. Banking Infrastructure & Commercial Rails
-2. Institutional Asset Management & RWAs
-3. Sovereign Infrastructure & CBDCs
-4. Regulatory & Legal Frameworks
-5. Frontier & Emerging Innovations (if applicable)
+Core Pillars (file each development under the ONE pillar that fits best):
+1. Banking Infrastructure & Commercial Rails: banks' and payment firms' deposit tokens, stablecoins issued or accepted by banks, payment networks (Kinexys, Partior, Swift payments), corporate treasury payments.
+2. Institutional Asset Management & RWAs: tokenised funds, bonds, equities and collateral; custody; market infrastructure operators (DTCC, Euroclear, Clearstream, exchanges, CSDs, CCPs) tokenising or settling securities - even when they use new technology.
+3. Sovereign Infrastructure & CBDCs: central bank projects and trials (Agorá, Meridian, Ensemble, Pontes, wholesale CBDC, RTGS synchronisation, central bank DLT bonds).
+4. Regulatory & Legal Frameworks: rules, consultations, laws, supervisory statements and standards bodies - including central bank or regulator consultations (e.g. a Bank of England consultation is Regulatory, not Asset Management).
+5. Frontier & Emerging Innovations: genuinely new technology with a clear digital-asset or payments use (privacy layers, interoperability protocols, agentic payments). Not market infrastructure operators, and not general AI or research tools.
 
-Write a custom synthesis sentence for each pillar explaining how these developments alter cross-border liquidity, commercial bank balance sheets, or capital efficiency.
+Audience and UK focus:
+- Readers are UK corporate and commercial bankers (e.g. Lloyds Banking Group, Barclays, HSBC, NatWest). Put the UK first: Bank of England, FCA, HM Treasury, UK banks and UK firms, UK law and UK market infrastructure.
+- Set "uk": true on any development that directly concerns the UK. Always include significant UK developments.
+- International items earn a place by what they mean for UK banks: competitor moves (US, EU and Asian banks), standards and rules UK firms must meet or will be compared with, and infrastructure UK banks connect to.
 
-Also synthesise the **Macro View**:
-Provide 4-5 bold, declarative macro observations synthesising the systemic implications for bank balance sheets, liquidity, and wholesale market infrastructure. Each is a distinct insight connecting several developments, not a list of them; never mention article ids in prose.
+Selection discipline (this is a five-minute executive brief of about 800 words, not a news digest):
+- Select AT MOST 12 developments in total, the most significant first, with at most 4 per pillar. Fewer is better than padding.
+- Each development must be a distinct event. When several articles cover the same event, cite ONE: prefer "quality": "primary" (central banks, regulators, official press releases), then "trade" (established financial trade press), and only use "aggregator" sources when nothing better covers the event.
+- Exclude anything not about digital assets, tokenisation, stablecoins, CBDCs or DLT-based payments and settlement (e.g. general AI research, generic fintech, crypto prices).
+- Keep every "details" to at most two sentences.
 
-Also analyse **Structural & Operational Pain Points** across:
-- interoperability_silos: Where disparate networks, private ledgers, or stablecoin standards fail to bridge cleanly, creating fragmented liquidity pools.
-- balance_sheet_and_liquidity_friction: Capital constraints, deposit disintermediation, parallel liquidity systems, or 24/7 liquidity buffer requirements under Basel III.
-- post_trade_plumbing_constraints: Settlement bottlenecks, custodian friction, or legacy ledger synchronisation and batch processing limitations.
-
-Also select **4-6 New High-Signal Targets for Tracking**:
-Dynamic, week-specific standout entities, pilots, or legislative bills directly emerging from this week's news with URL and 1-2 sentence institutional rationale.
-
-Selection discipline (this is an executive brief, not a news digest):
-- Select only the 12-20 most significant developments in total across all pillars, and at most 5 per pillar. Prefer primary-source and specialist coverage; merge multiple articles about the same event into one development.
-- Keep every "details" and "synthesis" to at most two sentences.
+Also write:
+- "macro_view" (shown as "In one minute"): EXACTLY 3 bullets. Each headline is one specific claim about this week (at most 12 words, sentence case); each detail is ONE short sentence on why it matters to a UK bank. Together they should let a reader skip the rest of the brief.
+- "uk_implications" (shown as "What it means for UK banks"): 2-3 short, concrete sentences on what this week's news means for UK banks - competitive pressure, regulatory benchmarks, decisions or preparation needed. Name the developments; no generic statements that would be true any week.
+- "new_high_signal_targets" (shown as "Worth watching"): up to 3 programmes, firms or upcoming decisions worth tracking that are NOT already among the selected developments (e.g. a consultation deadline, a launch due soon). Leave empty rather than repeat a development.
+- "subject_hook": the week's top one or two stories in at most 10 words for the email subject (e.g. "DBS-JPMorgan 24/7 dollar link; OCC stablecoin deadline").
+- "synthesis" for each pillar may be a short phrase; it is not shown to readers.
 
 Output contract (the response schema is enforced; follow these content rules):
 - "pillars" is a list; each entry's "name" must be one of the five Core Pillars above. Omit a pillar entirely if it has no qualifying developments.
 - Each raw feed article has a short "id" (e.g. "a17"). Every development MUST set "article_id" to the id of the article it is based on; when several articles cover the same event, use the most authoritative one. Leave "title", "source" and "url" empty: they are filled in from the feed automatically. Never cite an id that is not in the list below.
 - For "new_high_signal_targets", set "article_id" to the article that introduced the target (or an empty string if none) and leave "url" empty.
+- Leave "label", "stale" and "exclude" at their defaults; the editor sets them.
 - Do not wrap the JSON in markdown fences.
 
 Raw feed articles:
@@ -283,26 +288,33 @@ Raw feed articles:
         return None
 
 EDITOR_PROSE_RULES = f"""
-Voice: write like a well-edited newspaper brief for a busy senior banker. Plain English, short sentences (aim for under 25 words), active voice, one idea per sentence. Say what happened, then in one plain sentence why it matters to a bank (e.g. "Banks can move dollars between Singapore and New York at weekends without pre-funding."). Domain terms that carry meaning (tokenised deposit, stablecoin, repo, payment-versus-payment) are fine; spell out less-known acronyms on first use (e.g. "Depository Trust & Clearing Corporation (DTCC)"), but not ECB, BIS, FCA, US, UK, EU. No corporate jargon. Headlines in sentence case, at most 12 words.
+Voice: write like a well-edited newspaper brief for a busy senior UK banker. Plain English, short sentences (aim for under 20 words), active voice, one idea per sentence. Domain terms that carry meaning (tokenised deposit, stablecoin, repo, payment-versus-payment) are fine; spell out less-known acronyms on first use (e.g. "Depository Trust & Clearing Corporation (DTCC)"), but not ECB, BIS, FCA, US, UK, EU. No corporate jargon. The whole brief should read in about five minutes (roughly 800 words).
 
 1. Strict British English spelling (tokenised, tokenisation, prioritised, standardise, programmes, centre, synchronisation).
-2. Every development "details" opens with the concrete fact: who did what, with numbers, dates, currencies, counterparties or jurisdictions where the evidence gives them. Add a second short sentence ONLY if it tells a banker something concrete (e.g. "Corporate clients can now move dollars at weekends without pre-funding."); otherwise stop after the fact. Never end a sentence with a tacked-on participle clause such as ", affecting X", ", enabling Y" or ", impacting Z". No generic benefit claims such as "improves efficiency".
-3. Macro view: synthesis, not a list. Each headline is one specific, falsifiable claim about what this week's developments mean together (name the institutions or programmes); each detail is 1-2 sentences on the implication for bank balance sheets, liquidity or market plumbing. Do not enumerate developments, and do not repeat a development already used in another macro point. No headline may be true of any week.
-7. Never mention article ids (such as a17) anywhere in the prose; refer to institutions and events by name.
-4. Pillar syntheses: 1-2 sentences naming what changed this week and for whom. Pain points and target rationales: concrete and specific to this week's items.
-5. Banned words and phrases (never use them, in any inflection): {", ".join(HEDGE_PHRASES)}.
-6. Audience: executives in systemic commercial banking (e.g. Lloyds Banking Group, Barclays, HSBC), corporate treasury, risk, capital markets and FMIs. Short declarative sentences; no throat-clearing.
+2. Development "details": open with the concrete fact - who did what, with numbers, dates, currencies, counterparties or jurisdictions from the evidence. Add a second short sentence ONLY if it tells a banker something concrete; otherwise stop. Never end with a tacked-on clause such as ", affecting X" or ", enabling Y". No generic benefit claims.
+3. Development "label": the link text readers see. Write a short, plain-English label of at most 10 words in British spelling that says what happened (e.g. "DBS and JPMorgan link deposit tokens for 24/7 dollar payments"). Not the original headline, no questions, no clickbait, no publisher name.
+4. Never overclaim. Implications must be no stronger than the evidence: a trial "shows" or "could reduce", it does not "prove" or "eliminate". Say "plans to", "is consulting on" or "is testing" when that is what happened.
+5. "macro_view" ("In one minute"): 3 bullets. Headline: one specific claim about this week, sentence case, at most 12 words. Detail: ONE short sentence on why it matters to a UK bank. Do not list developments; no headline may be true of any week.
+6. "uk_implications" ("What it means for UK banks"): 2-3 short, concrete sentences naming this week's developments and what UK banks should note, decide or prepare for. No generic statements.
+7. Target rationales: one sentence on why to track it and what to watch for next (a date, decision or launch).
+8. "subject_hook": the top one or two stories in at most 10 words, no full stop.
+9. Never mention article ids (such as a17) anywhere in the prose; refer to institutions and events by name.
+10. Banned words and phrases (never use them, in any inflection): {", ".join(HEDGE_PHRASES)}.
 """
 
 EVIDENCE_RULES = """
 Factual grounding (most important rule):
 - The "Evidence" block gives, for each article_id, the headline, publisher and an excerpt of the article.
 - A development's "details" may ONLY state facts supported by its own article's headline or excerpt. Remove any claim in the current draft that the evidence does not support (for example an inferred programme, sandbox, amount, date or partner).
-- If the excerpt is empty, restrict the details to what the headline itself states.
-- Macro view, syntheses, pain points and rationales may only rely on facts present in the developments' evidence.
+- In One minute, UK implications and target rationales, rely only on facts present in the developments' evidence.
+
+Thin or off-topic items:
+- Set "exclude" to true when a development would only restate its headline because the evidence gives no further detail, UNLESS it is a UK development (keep UK items, stating only what the headline supports).
+- Set "exclude" to true for anything not about digital assets, tokenisation, stablecoins, CBDCs or DLT-based payments and settlement (e.g. general AI or econometrics research).
 
 Freshness:
-- Set a development's "stale" to true when its evidence shows the core event happened more than 30 days before the brief date AND the article reports nothing new about it (e.g. a fund that launched months ago, re-reported this week). Otherwise leave "stale" false. Stale developments are removed from the brief, so do not rely on them in the macro view, syntheses, pain points or targets.
+- Set a development's "stale" to true when its evidence shows the core event happened more than 30 days before the brief date AND the article reports nothing new about it (e.g. a fund that launched months ago, re-reported this week). Otherwise leave "stale" false.
+- Do not rely on stale or excluded developments anywhere else in the brief.
 """
 
 
@@ -317,7 +329,7 @@ Style rules:
 Hard constraints:
 - Return the SAME JSON structure with the SAME number of items in every list, in the SAME order.
 - Do NOT change any "article_id", "url", "title", "source", pillar "name" or target "name" value. Copy them exactly.
-- Only rewrite: macro_view headline/detail, pillar synthesis, development details and stale flag, structural_pain_points values, target rationale.
+- Only rewrite: macro_view headline/detail, uk_implications, development details, label, stale and exclude flags, target rationale, subject_hook. "uk_implications" may have 2-3 entries; every other list keeps its length.
 {extra}
 Evidence:
 {json.dumps(evidence_block, ensure_ascii=False, separators=(",", ":"))}
@@ -353,7 +365,9 @@ def run_editor(client, model, strategic_analysis, evidence_block=None, max_revis
 
         offending = find_hedging(prose_text(current))
         too_long = long_headlines(current)
-        if not offending and not too_long:
+        words = brief_word_count(current)
+        too_wordy = words > MAX_WORDS
+        if not offending and not too_long and not too_wordy:
             return current
         extra = "\nRevision request:"
         if offending:
@@ -363,6 +377,11 @@ def run_editor(client, model, strategic_analysis, evidence_block=None, max_revis
             extra += (" the previous draft (below) still used these banned phrases: " + ", ".join(offending)
                       + ". Rewrite every sentence containing them in plain, specific English."
                       + (f" Suggested replacements: {hints}." if hints else ""))
+        if too_wordy:
+            print(f"WARNING: editor draft {revision + 1} renders to {words} words (limit {MAX_WORDS})",
+                  file=sys.stderr)
+            extra += (f" The brief renders to {words} words; cut it to about {TARGET_WORDS}. Shorten details to "
+                      "one sentence where possible and set \"exclude\": true on the least important non-UK items.")
         if too_long:
             print(f"WARNING: editor draft {revision + 1} has {len(too_long)} macro headline(s) over "
                   f"{MAX_HEADLINE_WORDS} words", file=sys.stderr)
@@ -373,7 +392,7 @@ def run_editor(client, model, strategic_analysis, evidence_block=None, max_revis
 
 
 def merge_editor_prose(original, edited):
-    """Take prose from ``edited`` but identity fields (urls, titles, names) from ``original``.
+    """Take prose from ``edited`` but identity fields (urls, titles, names, uk) from ``original``.
 
     Returns None if the editor altered the shape, so the caller can fall back.
     """
@@ -388,14 +407,19 @@ def merge_editor_prose(original, edited):
     result = original.model_copy(deep=True)
     for r, e in zip(result.macro_view, edited.macro_view):
         r.headline, r.detail = e.headline, e.detail
+    if edited.uk_implications:
+        result.uk_implications = list(edited.uk_implications)
     for r_p, e_p in zip(result.pillars, edited.pillars):
         r_p.synthesis = e_p.synthesis
         for r_d, e_d in zip(r_p.developments, e_p.developments):
             r_d.details = e_d.details
+            r_d.label = e_d.label
             r_d.stale = e_d.stale
-    result.structural_pain_points = edited.structural_pain_points.model_copy()
+            r_d.exclude = e_d.exclude
     for r, e in zip(result.new_high_signal_targets, edited.new_high_signal_targets):
         r.rationale = e.rationale
+    if edited.subject_hook:
+        result.subject_hook = edited.subject_hook
     return result
 
 
@@ -556,6 +580,11 @@ def main():
     with open(briefing_path, "w", encoding="utf-8") as f:
         f.write(briefing)
     print(f"Briefing successfully compiled to {briefing_path}")
+
+    # Short top-story phrase for the email subject (read by publish.py).
+    subject_path = os.path.join(WORKSPACE_ROOT, "shared_artifacts", "email_subject.txt")
+    with open(subject_path, "w", encoding="utf-8") as f:
+        f.write(subject_line(edited_analysis))
 
     # Step 5: Run Publishing Layer
     print("Invoking Publishing layer...")

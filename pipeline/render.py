@@ -8,7 +8,7 @@ import sys
 from typing import Iterable, List, Set
 from urllib.parse import quote_plus
 
-from schema import PILLAR_ORDER, PillarName, StrategicAnalysis
+from schema import PILLAR_ORDER, Development, PillarName, StrategicAnalysis, Target
 
 SEARCH_FALLBACK = "https://www.google.com/search?q="
 
@@ -96,18 +96,18 @@ def to_british(text: str) -> str:
 
 
 def _map_prose(analysis: StrategicAnalysis, fn) -> None:
+    """Apply ``fn`` to every editor-written prose field (not titles or names)."""
     for point in analysis.macro_view:
         point.headline, point.detail = fn(point.headline), fn(point.detail)
+    analysis.uk_implications = [fn(x) for x in analysis.uk_implications]
     for pillar in analysis.pillars:
         pillar.synthesis = fn(pillar.synthesis)
         for dev in pillar.developments:
             dev.details = fn(dev.details)
-    pp = analysis.structural_pain_points
-    pp.interoperability_silos = fn(pp.interoperability_silos)
-    pp.balance_sheet_and_liquidity_friction = fn(pp.balance_sheet_and_liquidity_friction)
-    pp.post_trade_plumbing_constraints = fn(pp.post_trade_plumbing_constraints)
+            dev.label = fn(dev.label)
     for target in analysis.new_high_signal_targets:
         target.rationale = fn(target.rationale)
+    analysis.subject_hook = fn(analysis.subject_hook)
 
 
 def apply_british_english(analysis: StrategicAnalysis) -> None:
@@ -116,19 +116,7 @@ def apply_british_english(analysis: StrategicAnalysis) -> None:
     Source titles and entity names are left verbatim: they are quotations of
     third-party headlines and proper nouns (e.g. a US "Tokenization Act").
     """
-    for point in analysis.macro_view:
-        point.headline = to_british(point.headline)
-        point.detail = to_british(point.detail)
-    for pillar in analysis.pillars:
-        pillar.synthesis = to_british(pillar.synthesis)
-        for dev in pillar.developments:
-            dev.details = to_british(dev.details)
-    pp = analysis.structural_pain_points
-    pp.interoperability_silos = to_british(pp.interoperability_silos)
-    pp.balance_sheet_and_liquidity_friction = to_british(pp.balance_sheet_and_liquidity_friction)
-    pp.post_trade_plumbing_constraints = to_british(pp.post_trade_plumbing_constraints)
-    for target in analysis.new_high_signal_targets:
-        target.rationale = to_british(target.rationale)
+    _map_prose(analysis, to_british)
 
 
 # Corporate jargon: replace with plain words (suggestions are given to the editor).
@@ -152,6 +140,11 @@ JARGON_SUGGESTIONS = {
     "earmarking": "setting aside", "rails": "networks / systems", "plumbing": "infrastructure",
     "second-level": "in seconds", "multi-chain": "on several blockchains",
     ", affecting": "(end the sentence, or say concretely what changes)",
+    # Overclaiming: a trial or announcement rarely "eliminates" or "proves" anything.
+    "eliminates": "reduces (only if the evidence says so)", "eliminate": "reduce",
+    "eliminating": "reducing", "guarantees": "is designed to", "guarantee": "aim to",
+    "proves": "shows", "prove": "show", "proved": "showed", "removes the need": "reduces the need",
+    "game-changing": "(cut)", "unprecedented": "(cut unless the source says so)",
     ", enabling": "(end the sentence, or say concretely what changes)",
     ", impacting": "(end the sentence, or say concretely what changes)",
 }
@@ -247,8 +240,22 @@ def to_sentence_case(headline: str, reference_text: str) -> str:
     return " ".join(out)
 
 
+def _body_text(analysis: StrategicAnalysis) -> str:
+    """Sentence-case prose only (no headlines, titles or labels).
+
+    Used as the reference for deciding which headline words are proper nouns.
+    Headlines must be excluded: a Title Case headline would otherwise "find
+    itself" in the reference and every word would look like a proper noun.
+    """
+    parts = [p.detail for p in analysis.macro_view] + list(analysis.uk_implications)
+    for pillar in analysis.pillars:
+        parts += [d.details for d in pillar.developments]
+    parts += [t.rationale for t in analysis.new_high_signal_targets]
+    return "\n".join(parts)
+
+
 def apply_sentence_case_headlines(analysis: StrategicAnalysis) -> None:
-    reference = prose_text(analysis)
+    reference = _body_text(analysis)
     for point in analysis.macro_view:
         point.headline = to_sentence_case(point.headline, reference)
 
@@ -263,18 +270,18 @@ def find_hedging(text: str) -> List[str]:
 
 
 def prose_text(analysis: StrategicAnalysis) -> str:
-    """All model-written prose (not titles or names), for QC checks."""
+    """All rendered, model-written prose (not titles or names), for QC checks."""
     parts = []
-    for point in analysis.macro_view:
+    for point in analysis.macro_view[:MAX_ONE_MINUTE]:
         parts += [point.headline, point.detail]
+    parts += analysis.uk_implications[:MAX_UK_IMPLICATIONS]
     for pillar in analysis.pillars:
-        parts.append(pillar.synthesis)
-        parts += [dev.details for dev in pillar.developments]
-    pp = analysis.structural_pain_points
-    parts += [pp.interoperability_silos, pp.balance_sheet_and_liquidity_friction,
-              pp.post_trade_plumbing_constraints]
+        for dev in pillar.developments:
+            if not (dev.stale or dev.exclude):
+                parts += [dev.details, dev.label]
     parts += [t.rationale for t in analysis.new_high_signal_targets]
-    return "\n".join(parts)
+    parts.append(analysis.subject_hook)
+    return "\n".join(p for p in parts if p)
 
 
 # ---------------------------------------------------------------------------
@@ -311,76 +318,130 @@ def _oneline(text: str) -> str:
 
 # Reader-facing titles. The schema/prompt names stay stable; only the display changes.
 SECTION_TITLES = {
-    "macro": "The week in brief",
-    "pillars": "What happened",
-    "pain_points": "What is holding things back",
+    "one_minute": "In one minute",
+    "uk": "What it means for UK banks",
+    "happened": "What happened",
     "targets": "Worth watching",
 }
+UK_SUBHEADING = "UK"
 PILLAR_TITLES = {
     PillarName.BANKING: "Banks and payments",
-    PillarName.ASSET_MANAGEMENT: "Funds and tokenised assets",
-    PillarName.SOVEREIGN: "Central banks and public infrastructure",
+    PillarName.ASSET_MANAGEMENT: "Funds, securities and market infrastructure",
+    PillarName.SOVEREIGN: "Central banks",
     PillarName.REGULATORY: "Regulation and law",
     PillarName.FRONTIER: "New technology",
 }
-PAIN_POINT_LABELS = {
-    "interop": "Separate networks that don't connect",
-    "liquidity": "Liquidity and balance sheets",
-    "post_trade": "Settlement and post-trade",
-}
+
+# Size limits that keep the brief to roughly a five-minute read (~800 words).
+MAX_ONE_MINUTE = 3
+MAX_UK_IMPLICATIONS = 3
+MAX_ITEMS = 12
+MAX_TARGETS = 3
+TARGET_WORDS = 800
+MAX_WORDS = 950
+
+
+def selected_developments(analysis: StrategicAnalysis):
+    """Developments that will be shown: UK first, then pillar order; capped.
+
+    Returns a list of (pillar_name, development). Stale/excluded items and
+    duplicate citations of the same article are dropped.
+    """
+    by_name = {}
+    for pillar in analysis.pillars:
+        by_name.setdefault(pillar.name, []).extend(pillar.developments)
+    ordered, seen = [], set()
+    for name in PILLAR_ORDER:
+        for dev in by_name.get(name, []):
+            if dev.stale or dev.exclude or dev.article_id in seen:
+                continue
+            seen.add(dev.article_id)
+            ordered.append((name, dev))
+    uk = [x for x in ordered if x[1].uk]
+    rest = [x for x in ordered if not x[1].uk]
+    return (uk + rest)[:MAX_ITEMS]
+
+
+def selected_targets(analysis: StrategicAnalysis, chosen) -> List[Target]:
+    """'Worth watching' only lists things the reader has not just read about."""
+    cited = {dev.article_id for _, dev in chosen}
+    shown_titles = " ".join((dev.label or dev.title).lower() for _, dev in chosen)
+    out = []
+    for target in analysis.new_high_signal_targets:
+        if target.article_id and target.article_id in cited:
+            continue
+        if target.name and target.name.lower() in shown_titles:
+            continue
+        out.append(target)
+    return out[:MAX_TARGETS]
+
+
+def _item_line(dev: Development) -> str:
+    text = _oneline(dev.label) or _oneline(dev.title)
+    source = _oneline(dev.source)
+    attribution = f" *({source})*" if source and source.lower() not in text.lower() else ""
+    return f"* {_link(text, dev.url)}{attribution}: {_oneline(dev.details)}"
 
 
 def render_briefing(analysis: StrategicAnalysis) -> str:
     lines: List[str] = []
 
-    lines.append(f"## {SECTION_TITLES['macro']}")
-    for point in analysis.macro_view:
+    lines.append(f"## {SECTION_TITLES['one_minute']}")
+    for point in analysis.macro_view[:MAX_ONE_MINUTE]:
         headline = _oneline(point.headline).strip("* ")
         if headline and headline[-1] not in ".!?:":
             headline += "."
         lines.append(f"* **{headline}** {_oneline(point.detail)}")
     lines.append("")
 
-    lines.append(f"## {SECTION_TITLES['pillars']}")
-    lines.append("")
-    by_name = {}
-    for pillar in analysis.pillars:
-        # Merge duplicates defensively if the model repeats a pillar.
-        existing = by_name.get(pillar.name)
-        if existing:
-            existing.developments.extend(pillar.developments)
-        else:
-            by_name[pillar.name] = pillar.model_copy(deep=True)
+    implications = [_oneline(x) for x in analysis.uk_implications[:MAX_UK_IMPLICATIONS] if x.strip()]
+    if implications:
+        lines.append(f"## {SECTION_TITLES['uk']}")
+        lines += [f"* {x}" for x in implications]
+        lines.append("")
 
+    chosen = selected_developments(analysis)
+    lines.append(f"## {SECTION_TITLES['happened']}")
+    lines.append("")
+    uk_items = [dev for _, dev in chosen if dev.uk]
+    if uk_items:
+        lines.append(f"### {UK_SUBHEADING}")
+        lines += [_item_line(dev) for dev in uk_items]
+        lines.append("")
     for name in PILLAR_ORDER:
-        pillar = by_name.get(name)
-        if pillar:
-            pillar.developments = [d for d in pillar.developments if not d.stale]
-        if not pillar or not pillar.developments:
+        items = [dev for pname, dev in chosen if pname == name and not dev.uk]
+        if not items:
             continue
         lines.append(f"### {PILLAR_TITLES.get(name, name.value)}")
-        if pillar.synthesis.strip():
-            lines.append(_oneline(pillar.synthesis).strip("* "))
-        lines.append("")
-        for dev in pillar.developments:
-            source = _oneline(dev.source)
-            attribution = f" *({source})*" if source and source.lower() not in dev.title.lower() else ""
-            lines.append(f"* {_link(dev.title, dev.url)}{attribution}: {_oneline(dev.details)}")
+        lines += [_item_line(dev) for dev in items]
         lines.append("")
 
-    pp = analysis.structural_pain_points
-    lines.append(f"## {SECTION_TITLES['pain_points']}")
-    lines.append(f"* **{PAIN_POINT_LABELS['interop']}:** {_oneline(pp.interoperability_silos)}")
-    lines.append(f"* **{PAIN_POINT_LABELS['liquidity']}:** {_oneline(pp.balance_sheet_and_liquidity_friction)}")
-    lines.append(f"* **{PAIN_POINT_LABELS['post_trade']}:** {_oneline(pp.post_trade_plumbing_constraints)}")
-    lines.append("")
-
-    lines.append(f"## {SECTION_TITLES['targets']}")
-    for target in analysis.new_high_signal_targets:
-        lines.append(f"* {_link(target.name, target.url, bold=True)}: {_oneline(target.rationale)}")
-    lines.append("")
+    targets = selected_targets(analysis, chosen)
+    if targets:
+        lines.append(f"## {SECTION_TITLES['targets']}")
+        for target in targets:
+            lines.append(f"* {_link(target.name, target.url, bold=True)}: {_oneline(target.rationale)}")
+        lines.append("")
 
     return "\n".join(lines)
+
+
+def word_count(markdown_text: str) -> int:
+    """Words a reader sees (link URLs and markup excluded)."""
+    text = re.sub(r"\]\([^)]*\)", "]", markdown_text)
+    return len(re.findall(r"\w[\w'’.,/-]*", text))
+
+
+def brief_word_count(analysis: StrategicAnalysis) -> int:
+    return word_count(render_briefing(analysis))
+
+
+def subject_line(analysis: StrategicAnalysis, max_chars: int = 80) -> str:
+    """Short top-story phrase for the email subject (empty if none)."""
+    hook = _oneline(analysis.subject_hook).strip(" .")
+    if len(hook) > max_chars:
+        hook = hook[:max_chars].rsplit(" ", 1)[0]
+    return hook
 
 
 def finalise_briefing(analysis: StrategicAnalysis, allowed_urls: Iterable[str]) -> str:
@@ -390,6 +451,8 @@ def finalise_briefing(analysis: StrategicAnalysis, allowed_urls: Iterable[str]) 
             if dev.stale:
                 print(f"WARNING: dropping stale development '{dev.title}' (event predates this week)",
                       file=sys.stderr)
+            elif dev.exclude:
+                print(f"WARNING: dropping thin/off-topic development '{dev.title}'", file=sys.stderr)
     for warning in enforce_link_allowlist(analysis, allowed_urls):
         print(f"WARNING: {warning}", file=sys.stderr)
     apply_british_english(analysis)
@@ -399,6 +462,10 @@ def finalise_briefing(analysis: StrategicAnalysis, allowed_urls: Iterable[str]) 
     hedges = find_hedging(prose_text(analysis))
     if hedges:
         print(f"WARNING: QC hedging phrases present: {', '.join(hedges)}", file=sys.stderr)
+    words = word_count(markdown_text)
+    print(f"Brief length: {words} words (target ~{TARGET_WORDS})")
+    if words > MAX_WORDS:
+        print(f"WARNING: brief is {words} words, over the {MAX_WORDS}-word limit", file=sys.stderr)
     return markdown_text
 
 

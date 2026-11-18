@@ -27,31 +27,35 @@ If you change the section structure, update `render.py` and the prompts in `run_
 3. **No jargon or filler.** Banned words include utilise, leverage, facilitate, enhance, ecosystem, stakeholders, solution, landscape, crucial, pave the way, this signals. Payments-insider shorthand (nostro, earmark, rails, plumbing) is replaced with plain words. No tacked-on endings such as ", affecting X". The full list is `HEDGE_PHRASES` / `JARGON_SUGGESTIONS` in `render.py`.
 4. **Acronyms.** Spell out less-known ones on first use (e.g. "Depository Trust & Clearing Corporation (DTCC)"); ECB, BIS, FCA, US, UK and EU are fine as they are.
 5. **Headlines.** Sentence case, at most 12 words, one specific claim about this week.
+5a. **No overclaiming.** A trial "shows" or "could reduce"; it does not "prove" or "eliminate".
+5b. **Link labels.** Short plain-English text (at most 10 words) instead of the original headline.
+5c. **Thin or off-topic items** are marked `exclude` (UK items are kept even if thin).
 6. **British English** spelling (tokenised, programme, centre, synchronisation).
 7. Never mention internal article ids (such as a17).
 
 # Output layout (rendered in code)
-```markdown
-## The week in brief
-* **Sentence-case headline of 12 words or fewer.** One or two plain sentences on what it means.
+About 800 words, a five-minute read. Limits are enforced in `render.py` (`MAX_ONE_MINUTE`, `MAX_UK_IMPLICATIONS`, `MAX_ITEMS`, `MAX_TARGETS`, `MAX_WORDS`); a draft over the word limit is sent back to the editor to cut.
 
-## What happened
+```markdown
+## In one minute                      (3 bullets)
+* **Sentence-case headline, 12 words or fewer.** One sentence on why it matters to a UK bank.
+
+## What it means for UK banks         (2-3 concrete sentences naming this week's news)
+* ...
+
+## What happened                      (at most 12 items, UK first)
+
+### UK
+* [Short plain-English label](publisher URL) *(Publisher)*: The fact, with names, numbers and dates.
 
 ### Banks and payments
-One or two sentences on what changed this week and for whom.
-
-* [Article title](publisher URL) *(Publisher)*: What happened, with names, numbers and dates.
-
-### Funds and tokenised assets
-### Central banks and public infrastructure
+### Funds, securities and market infrastructure
+### Central banks
 ### Regulation and law
-### New technology            (only when there are items)
+### New technology                   (only when there are items)
 
-## What is holding things back
-* **Separate networks that don't connect:** ...
-* **Liquidity and balance sheets:** ...
-* **Settlement and post-trade:** ...
-
-## Worth watching
-* [**Name**](URL): Why it is worth tracking, in one or two sentences.
+## Worth watching                     (up to 3; only things not already covered above)
+* [**Name**](URL): Why to track it and what happens next.
 ```
+
+The email subject is "Digital Asset Digest, <date>: <top one or two stories>".

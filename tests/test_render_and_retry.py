@@ -117,23 +117,28 @@ class TestRender(unittest.TestCase):
     def test_layout_and_links(self):
         analysis = StrategicAnalysis.model_validate(sample_payload())
         md = finalise_briefing(analysis, ALLOWED)
-        self.assertTrue(md.startswith("## The week in brief"))
-        for header in ["## What happened", "## What is holding things back", "## Worth watching",
-                       "* **Separate networks that don't connect:**"]:
-            self.assertIn(header, md)
-        # Fixed pillar order: Banking before Sovereign regardless of input order
-        self.assertLess(md.index("### Banks and payments"), md.index("### Central banks and public infrastructure"))
-        # Empty pillars are omitted
+        self.assertTrue(md.startswith("## In one minute"))
+        self.assertIn("## What happened", md)
+        # No UK implications in the sample payload -> section omitted
+        self.assertNotIn("## What it means for UK banks", md)
+        # Old evergreen pain-points section is gone
+        self.assertNotIn("holding things back", md)
+        # Fixed pillar order: Banking before Central banks regardless of input order
+        self.assertLess(md.index("### Banks and payments"), md.index("### Central banks"))
+        # Empty pillars are omitted; pillar syntheses are not rendered
         self.assertNotIn("### New technology", md)
+        self.assertNotIn("prioritise synchronisation", md)
         # Brackets in titles are escaped so the link is not broken
         self.assertIn("[Fnality \\[GBP\\] launch](https://www.ledgerinsights.com/fnality/)", md)
-        # Prose normalised to British English, titles untouched
-        self.assertIn("synchronisation", md)
         self.assertIn("Banks use 24/7 rails", md)  # utilize -> utilise -> use
         self.assertNotIn("fake123", md)
         # Headlines are terminated; publisher shown after the link
         self.assertIn("* **Deposit tokens go live.** Banks", md)
         self.assertIn("(https://www.bankofengland.co.uk/news/dss) *(BoE News)*:", md)
+        # 'Worth watching' drops the Fnality target (already covered above), keeps Project Agora
+        watching = md.split("## Worth watching")[1]
+        self.assertNotIn("Fnality", watching)
+        self.assertIn("Project Agora", watching)
 
     def test_newsletter_is_plain(self):
         md = render_briefing(StrategicAnalysis.model_validate(sample_payload()))
@@ -143,10 +148,80 @@ class TestRender(unittest.TestCase):
             self.assertNotIn(banned, html)
         self.assertNotRegex(html, r"background:#(?!ffffff)")
         self.assertIn("16 November 2026", html)
-        self.assertRegex(html, r'<h2 style="[^"]+">The week in brief</h2>')
+        self.assertRegex(html, r'<h2 style="[^"]+">In one minute</h2>')
         self.assertRegex(html, r'<a style="[^"]+" href="https://www\.bankofengland\.co\.uk/news/dss">')
-        # Pillar synthesis is a normal paragraph, not an italic callout
-        self.assertNotIn("<em", html.split("Central banks prioritise synchronisation")[0][-40:])
+
+
+class TestNewStructure(unittest.TestCase):
+    def payload(self):
+        p = sample_payload()
+        p["macro_view"] = [{"headline": f"Point {i}", "detail": "Why it matters."} for i in range(5)]
+        p["uk_implications"] = ["Monument puts pressure on UK deposit pricing.", "BoE consultation closes soon.",
+                                "Third.", "Fourth is dropped."]
+        devs = p["pillars"][1]["developments"]
+        devs[0]["label"] = "Fnality goes live for sterling"
+        devs.append({"article_id": "a9", "title": "Monument tokenised deposits", "source": "Finextra",
+                     "url": "https://finextra.com/monument", "details": "Monument launched.", "uk": True})
+        devs.append({"article_id": "a10", "title": "Thin item", "source": "X", "url": "https://x.com/t",
+                     "details": "Thin.", "exclude": True})
+        devs.append({"article_id": "a2", "title": "Duplicate citation", "source": "X",
+                     "url": "https://x.com/d", "details": "Dup."})
+        p["subject_hook"] = "Monument tokenised deposits; Fnality goes live."
+        return p
+
+    def test_sections_caps_uk_first_and_labels(self):
+        from render import render_briefing
+        md = render_briefing(StrategicAnalysis.model_validate(self.payload()))
+        one_minute = md.split("## What it means for UK banks")[0]
+        self.assertEqual(one_minute.count("* **Point"), 3)  # capped at 3
+        uk = md.split("## What it means for UK banks")[1].split("## What happened")[0]
+        self.assertEqual(uk.count("\n* "), 3)  # capped at 3
+        happened = md.split("## What happened")[1]
+        self.assertTrue(happened.lstrip().startswith("### UK"))
+        self.assertLess(happened.index("Monument"), happened.index("### Banks and payments"))
+        self.assertIn("[Fnality goes live for sterling](", md)  # label used as link text
+        self.assertNotIn("Thin item", md)
+        self.assertNotIn("Duplicate citation", md)
+
+    def test_item_cap(self):
+        from render import MAX_ITEMS, selected_developments
+        p = self.payload()
+        p["pillars"][0]["developments"] = [
+            {"article_id": f"b{i}", "title": f"T{i}", "url": f"https://x/{i}", "details": "d"} for i in range(20)]
+        chosen = selected_developments(StrategicAnalysis.model_validate(p))
+        self.assertEqual(len(chosen), MAX_ITEMS)
+        self.assertTrue(chosen[0][1].uk)  # UK item first even though its pillar comes later
+
+    def test_subject(self):
+        from render import subject_line
+        import tempfile
+        from publish import email_subject
+        hook = subject_line(StrategicAnalysis.model_validate(self.payload()))
+        self.assertEqual(hook, "Monument tokenised deposits; Fnality goes live")
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+            f.write(hook)
+        self.assertEqual(email_subject("2026-11-23", f.name),
+                         "Digital Asset Digest, 23 Nov: Monument tokenised deposits; Fnality goes live")
+        self.assertEqual(email_subject("2026-11-23", "/nonexistent"), "Digital Asset Digest: 2026-11-23")
+
+    def test_sentence_case_regression_headline_in_analysis(self):
+        # Live bug: the headline itself was part of the reference text, so every word looked
+        # like a proper noun and Title Case survived.
+        p = self.payload()
+        p["macro_view"] = [{"headline": "Commercial Banks Interlink Deposit Platforms to Support Continuous Dollar Transfers",
+                            "detail": "DBS and J.P. Morgan connected their platforms so banks can move dollars at weekends."}]
+        analysis = StrategicAnalysis.model_validate(p)
+        md = finalise_briefing(analysis, ALLOWED)
+        self.assertIn("**Commercial banks interlink deposit platforms to support continuous dollar transfers.**", md)
+
+    def test_word_count_excludes_urls(self):
+        from render import word_count
+        self.assertEqual(word_count("* [Two words](https://example.com/a/very/long/path) *(Src)*: three more words"), 6)
+
+    def test_source_quality_in_prompt(self):
+        prompt_articles, _ = run_pipeline.index_articles([{"title": "t", "url": "u", "source": "CoinMarketCap"},
+                                                          {"title": "t", "url": "u2", "source": "BoE News"}])
+        self.assertEqual([a["quality"] for a in prompt_articles], ["aggregator", "primary"])
 
 
 class TestEditorMerge(unittest.TestCase):
@@ -241,7 +316,7 @@ class TestArticleRefs(unittest.TestCase):
         ]
         prompt_articles, by_id = run_pipeline.index_articles(feed)
         self.assertEqual(prompt_articles[0], {"id": "a1", "title": "Fnality live", "source": "FT",
-                                              "published": "2026-11-15"})
+                                              "quality": "trade", "published": "2026-11-15"})
         self.assertNotIn("url", prompt_articles[1])
 
         analysis = StrategicAnalysis.model_validate({

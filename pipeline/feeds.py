@@ -11,6 +11,7 @@ Each feed has a ``filter`` mode:
 ``candidate=True`` feeds are not ingested; they are only probed by
 ``pipeline/feed_check.py`` so they can be verified before being switched on.
 """
+import re
 from dataclasses import dataclass
 from typing import List, Optional
 from urllib.parse import quote_plus
@@ -149,3 +150,46 @@ DISCOVERY_PAGES: List[str] = []
 
 def active_feeds() -> List[Feed]:
     return [f for f in FEEDS if not f.candidate]
+
+
+# ---------------------------------------------------------------------------
+# Source quality, shown to the strategist so it prefers primary sources and
+# established trade press over aggregators when several articles cover an event.
+# Matching is case-insensitive on the publisher name (substring).
+# ---------------------------------------------------------------------------
+
+PRIMARY_SOURCE_HINTS = [
+    "bank of england", "boe ", "fca", "hm treasury", "gov.uk", "ecb", "european central bank",
+    "bis ", "bank for international settlements", "federal reserve", "occ", "comptroller",
+    "fsb", "financial stability board", "esma", "eba", "iosco", "hkma", "monetary authority",
+    "european commission", "sec.gov", "cftc",
+]
+TRADE_PRESS_HINTS = [
+    "ledger insights", "finextra", "the block", "american banker", "financial times", "ft", "ft.com",
+    "reuters", "bloomberg", "risk.net", "the banker", "global custodian", "banking dive",
+    "payments dive", "fintech futures", "ibs intelligence", "coindesk", "dl news", "blockhead",
+    "the full fx", "the trade", "euromoney", "central banking", "wsj", "wall street journal",
+]
+AGGREGATOR_HINTS = [
+    "coinmarketcap", "cryptonews", "tokenpost", "onesafe", "genfinity", "tekedia", "wion",
+    "digitaltoday", "디지털투데이", "binance", "bitget", "coingape", "beincrypto", "u.today",
+    "crypto.news", "coinpedia", "blockonomi", "crypto briefing", "the crypto basic", "bitcoinist",
+    "newsbtc", "coinspeaker", "ffnews", "ff news", "yahoo",
+]
+
+
+def source_quality(source: str) -> str:
+    """'primary', 'trade', 'aggregator' or 'other' for a publisher name."""
+    s = (source or "").lower()
+
+    def has(hints):
+        return any(re.search(r"(?<![a-z])" + re.escape(h.strip()) + r"(?![a-z])", s) for h in hints)
+
+    public_feeds = {f.name.lower() for f in FEEDS if f.filter == "public_sector"}
+    if s in public_feeds or has(PRIMARY_SOURCE_HINTS):
+        return "primary"
+    if has(TRADE_PRESS_HINTS):
+        return "trade"
+    if has(AGGREGATOR_HINTS):
+        return "aggregator"
+    return "other"
