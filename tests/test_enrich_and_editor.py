@@ -156,3 +156,90 @@ class TestHedging(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFreshnessAndUKAngle(unittest.TestCase):
+    TODAY = __import__("datetime").date(2026, 11, 18)
+
+    def payload(self):
+        p = sample_payload()
+        devs = p["pillars"][1]["developments"]
+        devs[0]["event_date"] = "2026-10-28"        # Fnality: 21 days old -> dropped
+        devs.append({"article_id": "fresh", "title": "HKEX wCBDC margin", "source": "Ledger Insights",
+                     "url": "https://li/hkex", "event_date": "2026-11-17",
+                     "details": "HKEX will accept wCBDC margin from 14 December; HSBC and Standard Chartered are settlement banks."})
+        p["macro_view"] = [{"headline": "Fnality goes live", "detail": "It settled sterling.", "article_id": "a2"},
+                           {"headline": "HKEX accepts wCBDC", "detail": "From 14 December.", "article_id": "fresh"}]
+        return p
+
+    def test_old_events_dropped_and_flagged(self):
+        import datetime
+        from unittest.mock import patch
+        import render
+        analysis = StrategicAnalysis.model_validate(self.payload())
+        with patch.object(render.datetime, "date", wraps=datetime.date) as d:
+            d.today.return_value = self.TODAY
+            ids = [dev.article_id for _, dev in render.selected_developments(analysis)]
+            flagged = render.old_one_minute(analysis, today=self.TODAY)
+        self.assertNotIn("a2", ids)
+        self.assertIn("fresh", ids)
+        self.assertEqual(len(flagged), 1)
+        self.assertIn("2026-10-28", flagged[0])
+
+    def test_undated_events_are_kept(self):
+        from render import is_old_event
+        from schema import Development
+        self.assertFalse(is_old_event(Development(article_id="x", details="d"), 7))
+
+    def test_editor_can_swap_one_minute_story(self):
+        original = StrategicAnalysis.model_validate(self.payload())
+        edited_payload = self.payload()
+        edited_payload["macro_view"][0] = {"headline": "BoE DSS expands", "detail": "Sandbox grew.", "article_id": "a1"}
+        merged = run_pipeline.merge_editor_prose(original, StrategicAnalysis.model_validate(edited_payload))
+        self.assertEqual(merged.macro_view[0].article_id, "a1")
+        bogus = self.payload()
+        bogus["macro_view"][0]["article_id"] = "made-up"
+        merged = run_pipeline.merge_editor_prose(original, StrategicAnalysis.model_validate(bogus))
+        self.assertEqual(merged.macro_view[0].article_id, "a2")  # unknown id rejected
+
+    def test_uk_angle_does_not_repeat_uk_items(self):
+        from render import render_briefing
+        p = sample_payload()
+        p["pillars"][1]["developments"].append({
+            "article_id": "mon", "title": "Monument launches tokenised deposits", "source": "Finextra",
+            "url": "https://f/m", "uk": True,
+            "details": "Monument Bank launched the UK's first interest-bearing tokenised deposits on Midnight."})
+        p["uk_implications"] = [
+            "Monument Bank launched the UK's first interest-bearing tokenised deposits on the Midnight Network.",
+            "HSBC and Standard Chartered are settlement banks for the HKEX wholesale CBDC margin service."]
+        md = render_briefing(StrategicAnalysis.model_validate(p))
+        angle = md.split("## The UK angle")[1].split("## What happened")[0]
+        self.assertNotIn("Monument", angle)
+        self.assertIn("HSBC and Standard Chartered", angle)
+
+    def test_new_technology_requires_ledger_or_tokens(self):
+        from render import render_briefing
+        p = sample_payload()
+        p["pillars"].append({"name": "Frontier & Emerging Innovations", "developments": [
+            {"article_id": "ai1", "title": "HKMA explores AI for crime detection", "url": "https://x/ai",
+             "details": "The HKMA is testing AI agents to flag suspicious transactions."},
+            {"article_id": "ai2", "title": "AI agents settle FX on Kinexys", "url": "https://x/k",
+             "details": "Hyundai Card and JPMorgan ran AI agents that settled FX on the Kinexys blockchain."}]})
+        md = render_briefing(StrategicAnalysis.model_validate(p))
+        self.assertNotIn("crime detection", md)
+        self.assertIn("Kinexys", md)
+
+
+class TestPdfEvidence(unittest.TestCase):
+    def test_pdf_excerpt(self):
+        from pdf_fixture import make_pdf
+        self.assertEqual(enrich.extract_pdf_excerpt(make_pdf("IOSCO 2026 Monitoring Report")),
+                         "IOSCO 2026 Monitoring Report")
+        self.assertEqual(enrich.extract_pdf_excerpt(b"not a pdf"), "")
+
+    def test_fetch_excerpt_routes_pdf(self):
+        from pdf_fixture import make_pdf
+        with patch.object(enrich, "_get_document", return_value=("pdf", make_pdf("BIS paper text"))):
+            self.assertEqual(enrich.fetch_excerpt("https://bis.org/x.pdf"), "BIS paper text")
+        with patch.object(enrich, "_get_document", return_value=(None, None)):
+            self.assertEqual(enrich.fetch_excerpt("https://x"), "")

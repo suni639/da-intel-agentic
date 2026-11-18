@@ -47,6 +47,9 @@ class Development(BaseModel):
     # Set by the editor when the evidence shows the underlying event is old
     # news (e.g. a launch months ago re-reported this week); not rendered.
     stale: bool = False
+    # Date of the underlying event (YYYY-MM-DD) when the evidence states it,
+    # which can be weeks before the article's publication date.
+    event_date: str = ""
     # Set by the editor for items that are off-topic for a digital-asset brief;
     # never rendered.
     exclude: bool = False

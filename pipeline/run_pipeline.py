@@ -14,7 +14,7 @@ from enrich import evidence_for_prompt, gather_evidence
 from feeds import source_quality
 from render import (HEDGE_PHRASES, JARGON_SUGGESTIONS, MAX_HEADLINE_WORDS, MAX_WORDS, TARGET_WORDS,
                     brief_word_count, finalise_briefing, find_hedging, long_headlines, prose_text,
-                    repetitive_one_minute, subject_line)
+                    old_one_minute, repetitive_one_minute, subject_line)
 from schema import StrategicAnalysis
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -249,7 +249,7 @@ Core Pillars (file each development under the ONE pillar that fits best):
 2. Institutional Asset Management & RWAs: tokenised funds, bonds, equities and collateral; custody; market infrastructure operators (DTCC, Euroclear, Clearstream, exchanges, CSDs, CCPs) tokenising or settling securities - even when they use new technology.
 3. Sovereign Infrastructure & CBDCs: central bank projects and trials (Agorá, Meridian, Ensemble, Pontes, wholesale CBDC, RTGS synchronisation, central bank DLT bonds).
 4. Regulatory & Legal Frameworks: rules, consultations, laws, supervisory statements and standards bodies - including central bank or regulator consultations (e.g. a Bank of England consultation is Regulatory, not Asset Management).
-5. Frontier & Emerging Innovations: genuinely new technology with a clear digital-asset or payments use (privacy layers, interoperability protocols, agentic payments). Not market infrastructure operators, and not general AI or research tools.
+5. Frontier & Emerging Innovations: genuinely new technology that itself involves tokenised money or assets, stablecoins, CBDCs or a DLT ledger (privacy layers, interoperability protocols, agentic payments settled on a ledger). Not market infrastructure operators, and not AI, analytics or compliance tools on their own (e.g. AI for crime detection is out).
 
 Audience and UK focus:
 - Readers are UK corporate and commercial bankers (e.g. Lloyds Banking Group, Barclays, HSBC, NatWest) who need the most important GLOBAL institutional digital asset news, with the UK angle made explicit.
@@ -258,14 +258,15 @@ Audience and UK focus:
 
 Selection discipline (this is a five-minute executive brief of about 800 words, not a news digest):
 - Select AT MOST 12 developments in total, the most significant first, with at most 4 per pillar. Fewer is better than padding.
+- Freshness: prefer events that happened in the past week. An article published this week about an event from weeks ago (e.g. a launch on 28 October re-reported on 16 November) is old news; include it only if the article reports something new about it.
 - Each development must be a distinct event. When several articles cover the same event, cite ONE: prefer "quality": "primary" (central banks, regulators, official press releases), then "trade" (established financial trade press), and only use "aggregator" sources when nothing better covers the event.
 - Exclude anything not about digital assets, tokenisation, stablecoins, CBDCs or DLT-based payments and settlement (e.g. general AI research, AI agents with no digital-asset element, a regulator's general innovation statistics, generic fintech, crypto prices).
 - "macro_view" must cover the week's three biggest stories (global or UK), not novelty items.
 - Keep every "details" to at most two sentences.
 
 Also write:
-- "macro_view" (shown as "In one minute"): EXACTLY 3 bullets on the week's three most significant developments, global or UK. Set each bullet's "article_id" to the development it summarises (that development must be among the selected ones). Headline: one specific statement of what happened (at most 12 words, sentence case). Detail: ONE sentence giving a further concrete fact from the article - a number, date, participant or scope - not commentary and not a repeat of the headline.
-- "uk_implications" (shown as "The UK angle"): 2-3 short factual sentences on this week's UK developments and on UK firms' or UK authorities' involvement in international ones (e.g. "HSBC and Standard Chartered are among the banks in the HKMA's tokenised deposit trial."). Facts only: no advice, recommendations, predictions or "UK banks should". Leave the list empty if there is no UK news.
+- "macro_view" (shown as "In one minute"): EXACTLY 3 bullets on the week's three most significant developments, global or UK, whose underlying events happened in the past 7 days. Set each bullet's "article_id" to the development it summarises (that development must be among the selected ones). Headline: one specific statement of what happened (at most 12 words, sentence case). Detail: ONE sentence giving a further concrete fact from the article - a number, date, participant or scope - not commentary and not a repeat of the headline.
+- "uk_implications" (shown as "The UK angle"): up to 3 short factual sentences on UK firms' or UK authorities' involvement in this week's INTERNATIONAL developments (e.g. "HSBC and Standard Chartered are among the banks in the HKMA's tokenised deposit trial."). Do not restate UK news itself - that is shown under the UK heading. Facts only: no advice, recommendations or predictions. Leave the list empty if no international story has a UK firm or authority involved.
 - "new_high_signal_targets" (shown as "Worth watching"): up to 3 specific upcoming events with a date or timeframe (a consultation deadline, launch date, vote, go-live, pilot phase) that are NOT about an organisation or programme already among the selected developments, each tied to the article ("article_id") that reports it. The rationale states what happens and when, as fact. No vague themes ("progress of X", "ongoing discussions") and no "monitor"/"watch closely"; leave empty rather than pad.
 - "subject_hook": the week's top one or two stories in at most 10 words for the email subject (e.g. "DBS-JPMorgan 24/7 dollar link; OCC stablecoin deadline").
 - "synthesis" for each pillar may be a short phrase; it is not shown to readers.
@@ -293,10 +294,10 @@ Voice: write like a well-edited newspaper brief for a busy senior UK banker. FAC
 
 1. Strict British English spelling (tokenised, tokenisation, prioritised, standardise, programmes, centre, synchronisation).
 2. Development "details": the concrete fact - who did what, with numbers, dates, currencies, counterparties or jurisdictions from the evidence. A second short sentence only for a further fact (e.g. "Ant International is the first client."). No commentary on what it means, no tacked-on clauses such as ", affecting X", no benefit claims.
-3. Development "label": the link text readers see. Write a short, plain-English label of at most 10 words in British spelling that says what happened (e.g. "DBS and JPMorgan link deposit tokens for 24/7 dollar payments"). Not the original headline, no questions, no clickbait, no publisher name.
+3. Development "label": the link text readers see. A short plain-English sentence of at most 10 words, in British spelling, with a clear subject and verb saying what happened (e.g. "Marex to offer tokenised Treasury financing after hours", "DBS and JPMorgan link deposit tokens for 24/7 dollar payments"). Not a list of names ("Talos, Marex, Broadridge for..."), not the original headline, no questions, no publisher name.
 4. Never overclaim. Implications must be no stronger than the evidence: a trial "shows" or "could reduce", it does not "prove" or "eliminate". Say "plans to", "is consulting on" or "is testing" when that is what happened.
 5. "macro_view" ("In one minute"): 3 bullets covering the three most significant developments this week, global or UK, ranked purely on significance (never an excluded or minor item). Headline: what happened, sentence case, at most 12 words. Detail: ONE sentence with a further concrete fact from that development's evidence (a number, date, participant or scope) - never a restatement of the headline and never commentary such as "This shows...". Keep each bullet's "article_id" unchanged.
-6. "uk_implications" ("The UK angle"): 2-3 short FACTUAL sentences about UK developments this week and UK firms' or authorities' roles in international ones. No advice or recommendations ("should", "need to", "benchmark", "note this"). Return an empty list if there is no UK news.
+6. "uk_implications" ("The UK angle"): up to 3 short FACTUAL sentences on UK firms' or UK authorities' roles in this week's INTERNATIONAL developments (e.g. HSBC and Standard Chartered as settlement banks for HKEX). Never restate a UK development itself - it already appears under the UK heading. No advice or recommendations. Return an empty list if no international story involves a UK firm or authority.
 7. Target rationales: one factual sentence on what happens next and when (the date, decision or launch). No "monitor", "watch closely" or "worth tracking".
 8. "subject_hook": the top one or two stories in at most 10 words, no full stop.
 9. Never mention article ids (such as a17) anywhere in the prose; refer to institutions and events by name.
@@ -315,7 +316,9 @@ Thin or off-topic items:
 - Set "exclude" to true only for items that are not about digital assets, tokenisation, stablecoins, CBDCs or DLT-based payments and settlement - e.g. general AI or econometrics research, AI agents without a digital-asset or tokenised-money element, or a regulator's general innovation or AI statistics.
 
 Freshness:
-- Set a development's "stale" to true when its evidence shows the core event happened more than 30 days before the brief date AND the article reports nothing new about it (e.g. a fund that launched months ago, re-reported this week). Otherwise leave "stale" false.
+- Set each development's "event_date" (YYYY-MM-DD) to the date the underlying event happened when the evidence states or clearly implies it (a launch, publication, go-live or announcement date); leave it empty if unknown. Developments whose event is more than 14 days before the brief date are dropped automatically.
+- Set "stale" to true when the evidence shows the core event happened more than 14 days before the brief date AND the article reports nothing new about it. Otherwise leave "stale" false.
+- "In one minute" may only cover events from the past 7 days.
 - Do not rely on stale or excluded developments anywhere else in the brief.
 """
 
@@ -331,7 +334,7 @@ Style rules:
 Hard constraints:
 - Return the SAME JSON structure with the SAME number of items in every list, in the SAME order.
 - Do NOT change any "article_id", "url", "title", "source", pillar "name" or target "name" value. Copy them exactly.
-- Only rewrite: macro_view headline/detail, uk_implications, development details, label, stale, thin and exclude flags, target rationale, subject_hook. "uk_implications" may have 2-3 entries; every other list keeps its length.
+- Only rewrite: macro_view headline/detail, uk_implications, development details, label, event_date, stale, thin and exclude flags, target rationale, subject_hook. "uk_implications" may have 2-3 entries; every other list keeps its length.
 {extra}
 Evidence:
 {json.dumps(evidence_block, ensure_ascii=False, separators=(",", ":"))}
@@ -370,7 +373,8 @@ def run_editor(client, model, strategic_analysis, evidence_block=None, max_revis
         words = brief_word_count(current)
         too_wordy = words > MAX_WORDS
         repeats = repetitive_one_minute(current)
-        if not offending and not too_long and not too_wordy and not repeats:
+        old_headlines = old_one_minute(current)
+        if not offending and not too_long and not too_wordy and not repeats and not old_headlines:
             return current
         extra = "\nRevision request:"
         if offending:
@@ -380,6 +384,11 @@ def run_editor(client, model, strategic_analysis, evidence_block=None, max_revis
             extra += (" the previous draft (below) still used these banned phrases: " + ", ".join(offending)
                       + ". Rewrite every sentence containing them in plain, specific English."
                       + (f" Suggested replacements: {hints}." if hints else ""))
+        if old_headlines:
+            print(f"WARNING: editor draft {revision + 1} headlines events older than a week", file=sys.stderr)
+            extra += (" 'In one minute' must cover events from the past 7 days, but these are older: "
+                      + " | ".join(old_headlines) + ". Replace them with this week's most significant "
+                      "developments (and set each bullet's article_id accordingly).")
         if repeats:
             print(f"WARNING: editor draft {revision + 1} has In-one-minute lines repeating their headline",
                   file=sys.stderr)
@@ -414,8 +423,12 @@ def merge_editor_prose(original, edited):
             return None
 
     result = original.model_copy(deep=True)
+    known_ids = {d.article_id for p in original.pillars for d in p.developments}
     for r, e in zip(result.macro_view, edited.macro_view):
         r.headline, r.detail = e.headline, e.detail
+        # The editor may swap an old story for a fresher one; accept only real ids.
+        if e.article_id in known_ids:
+            r.article_id = e.article_id
     # The editor may deliberately return an empty UK angle in a week without UK news.
     result.uk_implications = list(edited.uk_implications)
     for r_p, e_p in zip(result.pillars, edited.pillars):
@@ -426,6 +439,7 @@ def merge_editor_prose(original, edited):
             r_d.stale = e_d.stale
             r_d.exclude = e_d.exclude
             r_d.thin = e_d.thin
+            r_d.event_date = e_d.event_date
     for r, e in zip(result.new_high_signal_targets, edited.new_high_signal_targets):
         r.rationale = e.rationale
     if edited.subject_hook:

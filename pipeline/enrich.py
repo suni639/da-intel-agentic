@@ -58,18 +58,47 @@ def resolve_google_news(urls: List[str]) -> Dict[str, str]:
     return resolved
 
 
-def _get_html(url: str):
+MAX_PDF_BYTES = 15 * 1024 * 1024
+MAX_PDF_PAGES = 3
+
+
+def _get_document(url: str):
+    """Return ("html", text) or ("pdf", bytes) for a URL, or (None, None)."""
     for agent in (BOT_USER_AGENT, BROWSER_USER_AGENT):
         try:
             r = requests.get(url, timeout=FETCH_TIMEOUT, allow_redirects=True,
                              headers={"User-Agent": agent,
-                                      "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"})
+                                      "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8"})
         except Exception:
             continue
-        ctype = r.headers.get("Content-Type", "")
-        if r.status_code == 200 and "html" in ctype.lower():
-            return r.text
-    return None
+        if r.status_code != 200:
+            continue
+        ctype = r.headers.get("Content-Type", "").lower()
+        if "pdf" in ctype or r.content[:5] == b"%PDF-":
+            if len(r.content) <= MAX_PDF_BYTES:
+                return "pdf", r.content
+            return None, None
+        if "html" in ctype:
+            return "html", r.text
+    return None, None
+
+
+def _get_html(url: str):
+    kind, body = _get_document(url)
+    return body if kind == "html" else None
+
+
+def extract_pdf_excerpt(data: bytes, limit: int = EXCERPT_CHARS) -> str:
+    """Text of the first few pages of a PDF (regulators and central banks often publish as PDF)."""
+    try:
+        import io
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        text = " ".join((page.extract_text() or "") for page in reader.pages[:MAX_PDF_PAGES])
+    except Exception as e:
+        log(f"PDF text extraction failed: {e}")
+        return ""
+    return " ".join(text.split())[:limit].strip()
 
 
 def extract_excerpt(html: str, limit: int = EXCERPT_CHARS) -> str:
@@ -97,8 +126,12 @@ def extract_excerpt(html: str, limit: int = EXCERPT_CHARS) -> str:
 
 
 def fetch_excerpt(url: str) -> str:
-    html = _get_html(url)
-    return extract_excerpt(html) if html else ""
+    kind, body = _get_document(url)
+    if kind == "pdf":
+        return extract_pdf_excerpt(body)
+    if kind == "html":
+        return extract_excerpt(body)
+    return ""
 
 
 def gather_evidence(analysis, by_id) -> Tuple[Dict[str, str], List[str]]:
