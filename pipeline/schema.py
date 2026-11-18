@@ -45,9 +45,12 @@ class Development(BaseModel):
     # Set by the editor when the evidence shows the underlying event is old
     # news (e.g. a launch months ago re-reported this week); not rendered.
     stale: bool = False
-    # Set by the editor for items that are thin (nothing beyond the headline)
-    # or off-topic for a digital-asset brief; not rendered.
+    # Set by the editor for items that are off-topic for a digital-asset brief;
+    # never rendered.
     exclude: bool = False
+    # Set by the editor when the evidence gives nothing beyond the headline.
+    # Thin items are dropped only when they come from weak sources and are not UK.
+    thin: bool = False
 
 
 class Pillar(BaseModel):

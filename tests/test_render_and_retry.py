@@ -123,8 +123,10 @@ class TestRender(unittest.TestCase):
         self.assertNotIn("## What it means for UK banks", md)
         # Old evergreen pain-points section is gone
         self.assertNotIn("holding things back", md)
-        # Fixed pillar order: Banking before Central banks regardless of input order
-        self.assertLess(md.index("### Banks and payments"), md.index("### Central banks"))
+        # The BoE item is detected as UK (even without the strategist's flag) and shown first
+        happened = md.split("## What happened")[1]
+        self.assertTrue(happened.lstrip().startswith("### UK"))
+        self.assertLess(happened.index("BoE DSS update"), happened.index("### Banks and payments"))
         # Empty pillars are omitted; pillar syntheses are not rendered
         self.assertNotIn("### New technology", md)
         self.assertNotIn("prioritise synchronisation", md)
@@ -135,10 +137,9 @@ class TestRender(unittest.TestCase):
         # Headlines are terminated; publisher shown after the link
         self.assertIn("* **Deposit tokens go live.** Banks", md)
         self.assertIn("(https://www.bankofengland.co.uk/news/dss) *(BoE News)*:", md)
-        # 'Worth watching' drops the Fnality target (already covered above), keeps Project Agora
-        watching = md.split("## Worth watching")[1]
-        self.assertNotIn("Fnality", watching)
-        self.assertIn("Project Agora", watching)
+        # 'Worth watching' drops Fnality (already covered) and Project Agora (no source article),
+        # so the section is omitted entirely
+        self.assertNotIn("## Worth watching", md)
 
     def test_newsletter_is_plain(self):
         md = render_briefing(StrategicAnalysis.model_validate(sample_payload()))
@@ -182,6 +183,37 @@ class TestNewStructure(unittest.TestCase):
         self.assertIn("[Fnality goes live for sterling](", md)  # label used as link text
         self.assertNotIn("Thin item", md)
         self.assertNotIn("Duplicate citation", md)
+
+    def test_thin_items_dropped_only_from_weak_sources(self):
+        from render import render_briefing
+        p = self.payload()
+        devs = p["pillars"][0]["developments"]
+        devs += [
+            {"article_id": "t1", "title": "IOSCO tokenisation report", "source": "IOSCO",
+             "url": "https://iosco.org/r", "details": "IOSCO published a report.", "thin": True},
+            {"article_id": "t2", "title": "Aggregator rehash", "source": "CoinMarketCap",
+             "url": "https://cmc.com/x", "details": "Something happened.", "thin": True},
+            {"article_id": "t3", "title": "Lloyds tokenised gilt pilot", "source": "CoinMarketCap",
+             "url": "https://cmc.com/l", "details": "Lloyds ran a pilot.", "thin": True},
+        ]
+        md = render_briefing(StrategicAnalysis.model_validate(p))
+        self.assertIn("IOSCO tokenisation report", md)   # primary source: kept
+        self.assertNotIn("Aggregator rehash", md)         # weak source, not UK: dropped
+        self.assertIn("Lloyds tokenised gilt pilot", md)  # UK: kept
+        self.assertLess(md.index("Lloyds tokenised gilt pilot"), md.index("### Banks and payments"))
+
+    def test_worth_watching_requires_source_article(self):
+        from render import render_briefing
+        p = self.payload()
+        p["new_high_signal_targets"] = [
+            {"name": "BoE consultation closes 30 January", "article_id": "a77",
+             "url": "https://bankofengland.co.uk/c", "rationale": "Responses due."},
+            {"name": "Canton progress", "article_id": "", "url": "", "rationale": "Ongoing."},
+        ]
+        md = render_briefing(StrategicAnalysis.model_validate(p))
+        watching = md.split("## Worth watching")[1]
+        self.assertIn("BoE consultation closes 30 January", watching)
+        self.assertNotIn("Canton progress", watching)
 
     def test_item_cap(self):
         from render import MAX_ITEMS, selected_developments

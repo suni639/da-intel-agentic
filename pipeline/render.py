@@ -341,6 +341,23 @@ TARGET_WORDS = 800
 MAX_WORDS = 950
 
 
+# Backstop for the strategist's "uk" flag: obvious UK signals in the title/details/source.
+_UK_PATTERNS = re.compile(
+    r"\b(UK|U\.K\.|United Kingdom|Britain|British|England|London|sterling|GBP|gilts?|"
+    r"Bank of England|BoE|FCA|Financial Conduct Authority|PRA|HM Treasury|Prudential Regulation Authority|"
+    r"Lloyds|Barclays|NatWest|HSBC UK|Santander UK|Nationwide|Monument Bank|Standard Chartered UK|"
+    r"Digital Securities Sandbox|LSEG|London Stock Exchange)\b")
+
+
+def is_uk(dev: Development) -> bool:
+    return dev.uk or bool(_UK_PATTERNS.search(" ".join([dev.title, dev.label, dev.details, dev.source])))
+
+
+def _keep_thin(dev: Development) -> bool:
+    from feeds import source_quality
+    return is_uk(dev) or source_quality(dev.source) in ("primary", "trade")
+
+
 def selected_developments(analysis: StrategicAnalysis):
     """Developments that will be shown: UK first, then pillar order; capped.
 
@@ -355,7 +372,10 @@ def selected_developments(analysis: StrategicAnalysis):
         for dev in by_name.get(name, []):
             if dev.stale or dev.exclude or dev.article_id in seen:
                 continue
+            if dev.thin and not _keep_thin(dev):
+                continue
             seen.add(dev.article_id)
+            dev.uk = is_uk(dev)
             ordered.append((name, dev))
     uk = [x for x in ordered if x[1].uk]
     rest = [x for x in ordered if not x[1].uk]
@@ -368,7 +388,9 @@ def selected_targets(analysis: StrategicAnalysis, chosen) -> List[Target]:
     shown_titles = " ".join((dev.label or dev.title).lower() for _, dev in chosen)
     out = []
     for target in analysis.new_high_signal_targets:
-        if target.article_id and target.article_id in cited:
+        if not target.article_id or target.url.startswith(SEARCH_FALLBACK):
+            continue  # vague "keep an eye on X" with no source behind it
+        if target.article_id in cited:
             continue
         if target.name and target.name.lower() in shown_titles:
             continue
@@ -452,7 +474,9 @@ def finalise_briefing(analysis: StrategicAnalysis, allowed_urls: Iterable[str]) 
                 print(f"WARNING: dropping stale development '{dev.title}' (event predates this week)",
                       file=sys.stderr)
             elif dev.exclude:
-                print(f"WARNING: dropping thin/off-topic development '{dev.title}'", file=sys.stderr)
+                print(f"WARNING: dropping off-topic development '{dev.title}'", file=sys.stderr)
+            elif dev.thin and not _keep_thin(dev):
+                print(f"WARNING: dropping thin development from a weak source '{dev.title}'", file=sys.stderr)
     for warning in enforce_link_allowlist(analysis, allowed_urls):
         print(f"WARNING: {warning}", file=sys.stderr)
     apply_british_english(analysis)
