@@ -22,8 +22,11 @@ PILLAR_ORDER = list(PillarName)
 
 
 class MacroPoint(BaseModel):
+    """One 'In one minute' bullet: a short headline plus one factual sentence."""
     headline: str
     detail: str
+    # The development this bullet summarises; it is always shown in the body.
+    article_id: str = ""
 
 
 class Development(BaseModel):
@@ -35,21 +38,27 @@ class Development(BaseModel):
     source: str = ""
     url: str = ""
     details: str
+    # Short plain-English link text written by the editor (raw headlines are
+    # often long, US-spelt or clickbait). Falls back to the title if empty.
+    label: str = ""
+    # Set by the strategist when the development directly concerns the UK
+    # (UK banks, BoE, FCA, HM Treasury, UK law/market); shown first.
+    uk: bool = False
     # Set by the editor when the evidence shows the underlying event is old
     # news (e.g. a launch months ago re-reported this week); not rendered.
     stale: bool = False
+    # Set by the editor for items that are off-topic for a digital-asset brief;
+    # never rendered.
+    exclude: bool = False
+    # Set by the editor when the evidence gives nothing beyond the headline.
+    # Thin items are dropped only when they come from weak sources and are not UK.
+    thin: bool = False
 
 
 class Pillar(BaseModel):
     name: PillarName
-    synthesis: str
+    synthesis: str = ""  # kept for context; no longer rendered
     developments: List[Development]
-
-
-class PainPoints(BaseModel):
-    interoperability_silos: str
-    balance_sheet_and_liquidity_friction: str
-    post_trade_plumbing_constraints: str
 
 
 class Target(BaseModel):
@@ -60,10 +69,15 @@ class Target(BaseModel):
 
 
 class StrategicAnalysis(BaseModel):
+    # Rendered as "In one minute" (at most 3 bullets).
     macro_view: List[MacroPoint]
+    # Rendered as "What it means for UK banks" (2-3 plain sentences).
+    uk_implications: List[str] = []
     pillars: List[Pillar]
-    structural_pain_points: PainPoints
+    # Rendered as "Worth watching": only targets not already covered above.
     new_high_signal_targets: List[Target]
+    # A few words naming the week's top story, used in the email subject.
+    subject_hook: str = ""
 
     @model_validator(mode="before")
     @classmethod

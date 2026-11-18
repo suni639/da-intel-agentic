@@ -215,7 +215,7 @@ def publish_email(brief_content, today_str, dry_run):
         return SKIPPED
 
     recipients = parse_recipients(get_env_var('RECIPIENT_EMAIL'), default=get_env_var('SMTP_USER'))
-    subject = f"Digital Asset Digest: {today_str}"
+    subject = email_subject(today_str)
     html_content = convert_markdown_to_newsletter_html(subject, today_str, brief_content)
 
     if dry_run:
@@ -227,6 +227,24 @@ def publish_email(brief_content, today_str, dry_run):
         return OK
     log_error("Email delivery failed.")
     return FAILED
+
+
+SUBJECT_HOOK_PATH = os.path.join(WORKSPACE_ROOT, "shared_artifacts", "email_subject.txt")
+
+
+def email_subject(today_str, hook_path=None):
+    """'Digital Asset Digest, 23 Nov: <top story>' (falls back to the date alone)."""
+    hook = ""
+    try:
+        with open(hook_path or SUBJECT_HOOK_PATH, "r", encoding="utf-8") as f:
+            hook = " ".join(f.read().split()).strip(" .")
+    except OSError:
+        pass
+    try:
+        short_date = datetime.date.fromisoformat(today_str).strftime("%-d %b")
+    except ValueError:
+        short_date = today_str
+    return f"Digital Asset Digest, {short_date}: {hook}" if hook else f"Digital Asset Digest: {today_str}"
 
 
 def write_result(result, path=None):
