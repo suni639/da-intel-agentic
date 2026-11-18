@@ -29,7 +29,8 @@ If you change the section structure, update `render.py` and the prompts in `run_
 4. **Acronyms.** Spell out less-known ones on first use (e.g. "Depository Trust & Clearing Corporation (DTCC)"); ECB, BIS, FCA, US, UK and EU are fine as they are.
 5. **Headlines.** Sentence case, at most 12 words, one specific claim about this week.
 5a. **No overclaiming.** A trial "shows" or "could reduce"; it does not "prove" or "eliminate".
-5b. **Link labels.** Short plain-English text (at most 10 words) instead of the original headline.
+5b. **Link labels.** A short plain-English sentence with a subject and verb (at most 10 words), e.g. "Marex to offer tokenised Treasury financing after hours" - not a list of names.
+5d. **Freshness.** The editor records each item's `event_date`. Items whose event is more than 14 days old are dropped; "In one minute" only covers events from the past 7 days.
 5c. **Off-topic items** are marked `exclude`; **headline-only items** are marked `thin` and dropped only when they come from weak sources and are not UK or headlined in "In one minute".
 6. **British English** spelling (tokenised, programme, centre, synchronisation).
 7. Never mention internal article ids (such as a17).
@@ -41,7 +42,7 @@ About 800 words, a five-minute read. Limits are enforced in `render.py` (`MAX_ON
 ## In one minute                      (3 bullets: the week's biggest stories, global or UK)
 * **Sentence-case headline, 12 words or fewer.** One further concrete fact (not a repeat, not commentary).
 
-## The UK angle                       (2-3 factual sentences; omitted in a week without UK news)
+## The UK angle                       (UK firms'/authorities' roles in international stories; never repeats the UK items; omitted if none)
 * ...
 
 ## What happened                      (at most 12 items; up to 4 UK items first, global news keeps the rest)
@@ -53,7 +54,7 @@ About 800 words, a five-minute read. Limits are enforced in `render.py` (`MAX_ON
 ### Funds, securities and market infrastructure
 ### Central banks
 ### Regulation and law
-### New technology                   (only when there are items)
+### New technology                   (only items involving tokenised money/assets, stablecoins, CBDCs or a DLT ledger)
 
 ## Worth watching                     (up to 3 dated upcoming events, not about anything covered above)
 * [**Name**](URL): What happens next and when.

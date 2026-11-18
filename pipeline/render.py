@@ -3,6 +3,7 @@
 The LLM produces structured JSON only; this module owns the Markdown layout,
 so headers, section order and links are guaranteed rather than requested.
 """
+import datetime
 import re
 import sys
 from typing import Iterable, List, Set
@@ -370,6 +371,43 @@ def _keep_thin(dev: Development) -> bool:
     return is_uk(dev) or source_quality(dev.source) in ("primary", "trade")
 
 
+# Freshness: the brief is weekly, so events older than this are dropped even if
+# re-reported this week; "In one minute" only headlines events from the past week.
+STALE_EVENT_DAYS = 14
+ONE_MINUTE_MAX_AGE_DAYS = 7
+
+# "New technology" items must involve tokenised money/assets or a DLT ledger,
+# not AI or analytics tools on their own.
+_FRONTIER_RE = re.compile(
+    r"\b(tokeni[sz]\w*|deposit tokens?|stablecoins?|CBDCs?|wCBDC|DLT|distributed ledger|blockchain|"
+    r"on-chain|onchain|ledger|smart contracts?|Kinexys|Canton|Partior|digital assets?)\b", re.IGNORECASE)
+
+
+def event_age_days(dev: Development, today=None):
+    """Age in days of the development's underlying event, or None if unknown."""
+    try:
+        event = datetime.date.fromisoformat((dev.event_date or "")[:10])
+    except ValueError:
+        return None
+    return ((today or datetime.date.today()) - event).days
+
+
+def is_old_event(dev: Development, max_days: int, today=None) -> bool:
+    age = event_age_days(dev, today)
+    return age is not None and age > max_days
+
+
+def old_one_minute(analysis: StrategicAnalysis, today=None) -> List[str]:
+    """'In one minute' headlines about events older than a week."""
+    by_id = {d.article_id: d for p in analysis.pillars for d in p.developments}
+    out = []
+    for point in analysis.macro_view[:MAX_ONE_MINUTE]:
+        dev = by_id.get(point.article_id)
+        if dev is not None and is_old_event(dev, ONE_MINUTE_MAX_AGE_DAYS, today):
+            out.append(f"{point.headline} (event dated {dev.event_date})")
+    return out
+
+
 def _one_minute_ids(analysis: StrategicAnalysis) -> set:
     return {p.article_id for p in analysis.macro_view[:MAX_ONE_MINUTE] if p.article_id}
 
@@ -388,6 +426,11 @@ def selected_developments(analysis: StrategicAnalysis):
     for name in PILLAR_ORDER:
         for dev in by_name.get(name, []):
             if dev.stale or dev.exclude or dev.article_id in seen:
+                continue
+            if is_old_event(dev, STALE_EVENT_DAYS):
+                continue
+            if name == PillarName.FRONTIER and not _FRONTIER_RE.search(
+                    " ".join([dev.title, dev.label, dev.details])):
                 continue
             # A story summarised in "In one minute" is always shown in the body.
             if dev.thin and not _keep_thin(dev) and dev.article_id not in headline_ids:
@@ -425,6 +468,27 @@ def _entities(text: str) -> set:
     for entity in _ENTITY_RE.findall(text or ""):
         words |= {w for w in entity.split() if w not in _GENERIC_ENTITIES}
     return words
+
+
+def uk_angle_lines(analysis: StrategicAnalysis, chosen) -> List[str]:
+    """UK angle sentences that add something beyond the UK items shown below.
+
+    A sentence that mostly restates an item under the UK heading is dropped,
+    so the section only carries UK firms'/authorities' roles in other stories.
+    """
+    def words(text):
+        return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2 and w not in _STOPWORDS}
+
+    uk_items = [words(f"{d.label} {d.title} {d.details}") for _, d in chosen if d.uk]
+    out = []
+    for line in analysis.uk_implications[:MAX_UK_IMPLICATIONS]:
+        w = words(line)
+        if not w:
+            continue
+        if any(len(w & item) / len(w) >= 0.6 for item in uk_items):
+            continue
+        out.append(line)
+    return out
 
 
 def selected_targets(analysis: StrategicAnalysis, chosen) -> List[Target]:
@@ -494,13 +558,13 @@ def render_briefing(analysis: StrategicAnalysis) -> str:
         lines.append(f"* **{headline}** {_oneline(point.detail)}")
     lines.append("")
 
-    implications = [_oneline(x) for x in analysis.uk_implications[:MAX_UK_IMPLICATIONS] if x.strip()]
+    chosen = selected_developments(analysis)
+    implications = [_oneline(x) for x in uk_angle_lines(analysis, chosen)]
     if implications:
         lines.append(f"## {SECTION_TITLES['uk']}")
         lines += [f"* {x}" for x in implications]
         lines.append("")
 
-    chosen = selected_developments(analysis)
     lines.append(f"## {SECTION_TITLES['happened']}")
     lines.append("")
     uk_items = [dev for _, dev in chosen if dev.uk]
@@ -551,6 +615,9 @@ def finalise_briefing(analysis: StrategicAnalysis, allowed_urls: Iterable[str]) 
             if dev.stale:
                 print(f"WARNING: dropping stale development '{dev.title}' (event predates this week)",
                       file=sys.stderr)
+            elif is_old_event(dev, STALE_EVENT_DAYS):
+                print(f"WARNING: dropping development '{dev.title}' (event dated {dev.event_date}, "
+                      f"over {STALE_EVENT_DAYS} days old)", file=sys.stderr)
             elif dev.exclude:
                 print(f"WARNING: dropping off-topic development '{dev.title}'", file=sys.stderr)
             elif dev.thin and not _keep_thin(dev):
