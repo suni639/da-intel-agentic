@@ -22,9 +22,11 @@ PILLAR_ORDER = list(PillarName)
 
 
 class MacroPoint(BaseModel):
-    """One 'In one minute' bullet: a short headline plus one plain sentence."""
+    """One 'In one minute' bullet: a short headline plus one factual sentence."""
     headline: str
     detail: str
+    # The development this bullet summarises; it is always shown in the body.
+    article_id: str = ""
 
 
 class Development(BaseModel):

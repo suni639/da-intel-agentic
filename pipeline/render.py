@@ -145,6 +145,15 @@ JARGON_SUGGESTIONS = {
     "eliminating": "reducing", "guarantees": "is designed to", "guarantee": "aim to",
     "proves": "shows", "prove": "show", "proved": "showed", "removes the need": "reduces the need",
     "game-changing": "(cut)", "unprecedented": "(cut unless the source says so)",
+    # The brief is factual: no advice, recommendations or commentary.
+    "should": "(state the fact instead of advising)", "need to": "(state the fact)",
+    "needs to": "(state the fact)", "may need": "(state the fact)", "will need": "(state the fact)",
+    "monitor": "(say what happens and when)", "keep an eye": "(say what happens and when)",
+    "closely watch": "(say what happens and when)", "worth watching": "(say what happens and when)",
+    "consider": "(state the fact)", "this shows": "(give the concrete fact)",
+    "this confirms": "(give the concrete fact)", "this suggests": "(give the concrete fact)",
+    "this means": "(give the concrete fact)", "this highlights": "(give the concrete fact)",
+    "competitive benchmark": "(state the fact)", "regulatory clarity": "(say what the rule or proposal does)",
     ", enabling": "(end the sentence, or say concretely what changes)",
     ", impacting": "(end the sentence, or say concretely what changes)",
 }
@@ -319,7 +328,7 @@ def _oneline(text: str) -> str:
 # Reader-facing titles. The schema/prompt names stay stable; only the display changes.
 SECTION_TITLES = {
     "one_minute": "In one minute",
-    "uk": "What it means for UK banks",
+    "uk": "The UK angle",
     "happened": "What happened",
     "targets": "Worth watching",
 }
@@ -361,6 +370,10 @@ def _keep_thin(dev: Development) -> bool:
     return is_uk(dev) or source_quality(dev.source) in ("primary", "trade")
 
 
+def _one_minute_ids(analysis: StrategicAnalysis) -> set:
+    return {p.article_id for p in analysis.macro_view[:MAX_ONE_MINUTE] if p.article_id}
+
+
 def selected_developments(analysis: StrategicAnalysis):
     """Developments that will be shown: UK first, then pillar order; capped.
 
@@ -370,12 +383,14 @@ def selected_developments(analysis: StrategicAnalysis):
     by_name = {}
     for pillar in analysis.pillars:
         by_name.setdefault(pillar.name, []).extend(pillar.developments)
+    headline_ids = _one_minute_ids(analysis)
     ordered, seen = [], set()
     for name in PILLAR_ORDER:
         for dev in by_name.get(name, []):
             if dev.stale or dev.exclude or dev.article_id in seen:
                 continue
-            if dev.thin and not _keep_thin(dev):
+            # A story summarised in "In one minute" is always shown in the body.
+            if dev.thin and not _keep_thin(dev) and dev.article_id not in headline_ids:
                 continue
             seen.add(dev.article_id)
             dev.uk = is_uk(dev)
@@ -385,6 +400,8 @@ def selected_developments(analysis: StrategicAnalysis):
     # Global items keep the strategist's significance order within pillar order;
     # UK items beyond the cap only fill space that global news leaves free.
     rest = [x for x in ordered if not x[1].uk] + uk_extra
+    # Stories cited in "In one minute" must survive the item cap.
+    rest.sort(key=lambda x: x[1].article_id not in headline_ids)
     chosen = (uk_first + rest)[:MAX_ITEMS]
     # Items shown under a pillar heading rather than "UK" are rendered as non-UK.
     for _, dev in rest:
@@ -392,25 +409,76 @@ def selected_developments(analysis: StrategicAnalysis):
     return chosen
 
 
+_DATE_SIGNAL = re.compile(
+    r"\b(January|February|March|April|May|June|July|August|September|October|November|December|"
+    r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|Q[1-4]|H[12]|20\d\d|year-end|end of the year|"
+    r"next week|next month|this month|this week)\b", re.IGNORECASE)
+_ENTITY_RE = re.compile(r"\b(?:[A-Z][a-z]*[A-Z][A-Za-z]*|[A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\b")
+_GENERIC_ENTITIES = {"The", "This", "It", "A", "An", "In", "On", "By", "UK", "US", "EU", "Bank",
+                     "January", "February", "March", "April", "May", "June", "July", "August",
+                     "September", "October", "November", "December"}
+
+
+def _entities(text: str) -> set:
+    """Distinctive capitalised words (organisations, programmes), one word at a time."""
+    words = set()
+    for entity in _ENTITY_RE.findall(text or ""):
+        words |= {w for w in entity.split() if w not in _GENERIC_ENTITIES}
+    return words
+
+
 def selected_targets(analysis: StrategicAnalysis, chosen) -> List[Target]:
-    """'Worth watching' only lists things the reader has not just read about."""
+    """'Worth watching': dated upcoming events the reader has not just read about.
+
+    Dropped: targets with no source article (vague themes), targets without a
+    date or timeframe, and targets about an organisation/programme already
+    covered in the body (e.g. a second DTCC item).
+    """
     cited = {dev.article_id for _, dev in chosen}
-    shown_titles = " ".join((dev.label or dev.title).lower() for _, dev in chosen)
+    shown_entities = set()
+    for _, dev in chosen:
+        shown_entities |= _entities(f"{dev.label} {dev.title}")
     out = []
     for target in analysis.new_high_signal_targets:
         if not target.article_id or target.url.startswith(SEARCH_FALLBACK):
-            continue  # vague "keep an eye on X" with no source behind it
+            continue
         if target.article_id in cited:
             continue
-        if target.name and target.name.lower() in shown_titles:
+        if not _DATE_SIGNAL.search(f"{target.name} {target.rationale}"):
+            continue
+        if _entities(target.name) & shown_entities:
             continue
         out.append(target)
     return out[:MAX_TARGETS]
 
 
+def repetitive_one_minute(analysis: StrategicAnalysis) -> List[str]:
+    """'In one minute' bullets whose sentence just repeats the headline."""
+    def content_words(text):
+        return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 1 and w not in _STOPWORDS}
+
+    out = []
+    for point in analysis.macro_view[:MAX_ONE_MINUTE]:
+        h, d = content_words(point.headline), content_words(point.detail)
+        if d and len(h & d) / len(d) >= 0.5:
+            out.append(point.headline)
+    return out
+
+
+_STOPWORDS = {"the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "via", "using", "by",
+              "at", "from", "its", "their", "is", "are", "was", "were", "has", "have", "this", "that", "it"}
+
+
+def display_publisher(source: str) -> str:
+    """Clean publisher name for display: 'www.tokenpost.com' -> 'tokenpost.com'."""
+    s = _oneline(source)
+    s = re.sub(r"^https?://", "", s).rstrip("/")
+    return s[4:] if s.lower().startswith("www.") else s
+
+
 def _item_line(dev: Development) -> str:
     text = _oneline(dev.label) or _oneline(dev.title)
-    source = _oneline(dev.source)
+    source = display_publisher(dev.source)
     attribution = f" *({source})*" if source and source.lower() not in text.lower() else ""
     return f"* {_link(text, dev.url)}{attribution}: {_oneline(dev.details)}"
 

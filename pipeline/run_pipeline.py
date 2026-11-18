@@ -14,7 +14,7 @@ from enrich import evidence_for_prompt, gather_evidence
 from feeds import source_quality
 from render import (HEDGE_PHRASES, JARGON_SUGGESTIONS, MAX_HEADLINE_WORDS, MAX_WORDS, TARGET_WORDS,
                     brief_word_count, finalise_briefing, find_hedging, long_headlines, prose_text,
-                    subject_line)
+                    repetitive_one_minute, subject_line)
 from schema import StrategicAnalysis
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -264,9 +264,9 @@ Selection discipline (this is a five-minute executive brief of about 800 words, 
 - Keep every "details" to at most two sentences.
 
 Also write:
-- "macro_view" (shown as "In one minute"): EXACTLY 3 bullets on the week's three most significant developments, global or UK. Each headline is one specific claim about this week (at most 12 words, sentence case); each detail is ONE short sentence on why it matters to a bank. Together they should let a reader skip the rest of the brief.
-- "uk_implications" (shown as "What it means for UK banks"): 2-3 short, concrete sentences on what this week's news means for UK banks - competitive pressure, regulatory benchmarks, decisions or preparation needed. Name the developments; no generic statements that would be true any week.
-- "new_high_signal_targets" (shown as "Worth watching"): up to 3 specific upcoming events worth tracking that are NOT already among the selected developments - a consultation deadline, a launch date, a vote, a pilot phase - each tied to the article ("article_id") that reports it. No vague themes such as "progress of X" or "ongoing discussions"; leave empty rather than repeat a development or invent one.
+- "macro_view" (shown as "In one minute"): EXACTLY 3 bullets on the week's three most significant developments, global or UK. Set each bullet's "article_id" to the development it summarises (that development must be among the selected ones). Headline: one specific statement of what happened (at most 12 words, sentence case). Detail: ONE sentence giving a further concrete fact from the article - a number, date, participant or scope - not commentary and not a repeat of the headline.
+- "uk_implications" (shown as "The UK angle"): 2-3 short factual sentences on this week's UK developments and on UK firms' or UK authorities' involvement in international ones (e.g. "HSBC and Standard Chartered are among the banks in the HKMA's tokenised deposit trial."). Facts only: no advice, recommendations, predictions or "UK banks should". Leave the list empty if there is no UK news.
+- "new_high_signal_targets" (shown as "Worth watching"): up to 3 specific upcoming events with a date or timeframe (a consultation deadline, launch date, vote, go-live, pilot phase) that are NOT about an organisation or programme already among the selected developments, each tied to the article ("article_id") that reports it. The rationale states what happens and when, as fact. No vague themes ("progress of X", "ongoing discussions") and no "monitor"/"watch closely"; leave empty rather than pad.
 - "subject_hook": the week's top one or two stories in at most 10 words for the email subject (e.g. "DBS-JPMorgan 24/7 dollar link; OCC stablecoin deadline").
 - "synthesis" for each pillar may be a short phrase; it is not shown to readers.
 
@@ -289,15 +289,15 @@ Raw feed articles:
         return None
 
 EDITOR_PROSE_RULES = f"""
-Voice: write like a well-edited newspaper brief for a busy senior UK banker. Plain English, short sentences (aim for under 20 words), active voice, one idea per sentence. Domain terms that carry meaning (tokenised deposit, stablecoin, repo, payment-versus-payment) are fine; spell out less-known acronyms on first use (e.g. "Depository Trust & Clearing Corporation (DTCC)"), but not ECB, BIS, FCA, US, UK, EU. No corporate jargon. The whole brief should read in about five minutes (roughly 800 words).
+Voice: write like a well-edited newspaper brief for a busy senior UK banker. FACTUAL ONLY: report what happened, with names, numbers and dates; no advice, recommendations, predictions or commentary ("should", "need to", "this shows", "monitor"). Plain English, short sentences (aim for under 20 words), active voice, one idea per sentence. Domain terms that carry meaning (tokenised deposit, stablecoin, repo, payment-versus-payment) are fine; spell out less-known acronyms on first use (e.g. "Depository Trust & Clearing Corporation (DTCC)"), but not ECB, BIS, FCA, US, UK, EU. No corporate jargon. The whole brief should read in about five minutes (roughly 800 words).
 
 1. Strict British English spelling (tokenised, tokenisation, prioritised, standardise, programmes, centre, synchronisation).
-2. Development "details": open with the concrete fact - who did what, with numbers, dates, currencies, counterparties or jurisdictions from the evidence. Add a second short sentence ONLY if it tells a banker something concrete; otherwise stop. Never end with a tacked-on clause such as ", affecting X" or ", enabling Y". No generic benefit claims.
+2. Development "details": the concrete fact - who did what, with numbers, dates, currencies, counterparties or jurisdictions from the evidence. A second short sentence only for a further fact (e.g. "Ant International is the first client."). No commentary on what it means, no tacked-on clauses such as ", affecting X", no benefit claims.
 3. Development "label": the link text readers see. Write a short, plain-English label of at most 10 words in British spelling that says what happened (e.g. "DBS and JPMorgan link deposit tokens for 24/7 dollar payments"). Not the original headline, no questions, no clickbait, no publisher name.
 4. Never overclaim. Implications must be no stronger than the evidence: a trial "shows" or "could reduce", it does not "prove" or "eliminate". Say "plans to", "is consulting on" or "is testing" when that is what happened.
-5. "macro_view" ("In one minute"): 3 bullets covering the three most significant developments this week, global or UK, ranked purely on significance (never an excluded or minor item). Headline: one specific claim about this week, sentence case, at most 12 words. Detail: ONE short sentence on why it matters to a UK bank. Do not list developments; no headline may be true of any week.
-6. "uk_implications" ("What it means for UK banks"): 2-3 short, concrete sentences naming this week's developments and what UK banks should note, decide or prepare for. No generic statements.
-7. Target rationales: one sentence on why to track it and what to watch for next (a date, decision or launch).
+5. "macro_view" ("In one minute"): 3 bullets covering the three most significant developments this week, global or UK, ranked purely on significance (never an excluded or minor item). Headline: what happened, sentence case, at most 12 words. Detail: ONE sentence with a further concrete fact from that development's evidence (a number, date, participant or scope) - never a restatement of the headline and never commentary such as "This shows...". Keep each bullet's "article_id" unchanged.
+6. "uk_implications" ("The UK angle"): 2-3 short FACTUAL sentences about UK developments this week and UK firms' or authorities' roles in international ones. No advice or recommendations ("should", "need to", "benchmark", "note this"). Return an empty list if there is no UK news.
+7. Target rationales: one factual sentence on what happens next and when (the date, decision or launch). No "monitor", "watch closely" or "worth tracking".
 8. "subject_hook": the top one or two stories in at most 10 words, no full stop.
 9. Never mention article ids (such as a17) anywhere in the prose; refer to institutions and events by name.
 9a. Write dates the British way: "16 November", "18 January 2027".
@@ -369,7 +369,8 @@ def run_editor(client, model, strategic_analysis, evidence_block=None, max_revis
         too_long = long_headlines(current)
         words = brief_word_count(current)
         too_wordy = words > MAX_WORDS
-        if not offending and not too_long and not too_wordy:
+        repeats = repetitive_one_minute(current)
+        if not offending and not too_long and not too_wordy and not repeats:
             return current
         extra = "\nRevision request:"
         if offending:
@@ -379,6 +380,12 @@ def run_editor(client, model, strategic_analysis, evidence_block=None, max_revis
             extra += (" the previous draft (below) still used these banned phrases: " + ", ".join(offending)
                       + ". Rewrite every sentence containing them in plain, specific English."
                       + (f" Suggested replacements: {hints}." if hints else ""))
+        if repeats:
+            print(f"WARNING: editor draft {revision + 1} has In-one-minute lines repeating their headline",
+                  file=sys.stderr)
+            extra += (" In 'In one minute', these bullets' detail sentences only repeat the headline; replace each "
+                      "with a further concrete fact (number, date, participant or scope) from that development's "
+                      "evidence: " + " | ".join(repeats) + ".")
         if too_wordy:
             print(f"WARNING: editor draft {revision + 1} renders to {words} words (limit {MAX_WORDS})",
                   file=sys.stderr)
@@ -409,8 +416,8 @@ def merge_editor_prose(original, edited):
     result = original.model_copy(deep=True)
     for r, e in zip(result.macro_view, edited.macro_view):
         r.headline, r.detail = e.headline, e.detail
-    if edited.uk_implications:
-        result.uk_implications = list(edited.uk_implications)
+    # The editor may deliberately return an empty UK angle in a week without UK news.
+    result.uk_implications = list(edited.uk_implications)
     for r_p, e_p in zip(result.pillars, edited.pillars):
         r_p.synthesis = e_p.synthesis
         for r_d, e_d in zip(r_p.developments, e_p.developments):

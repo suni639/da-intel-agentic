@@ -23,13 +23,14 @@ If you change the section structure, update `render.py` and the prompts in `run_
 
 # Writing rules (what the editor is told)
 1. **Facts first, only from the evidence.** Every statement must be supported by that article's headline or excerpt. Remove anything the evidence does not support. If there is no excerpt, say only what the headline says.
-2. **Plain English.** Short active sentences (aim for under 25 words), one idea per sentence. Say what happened, then add one plain sentence on why it matters to a bank only if it says something concrete (e.g. "Corporate clients can now move dollars at weekends without pre-funding.").
+2. **Factual only.** Report what happened with names, numbers and dates. No advice, recommendations, predictions or commentary ("should", "need to", "this shows", "monitor"). A second sentence is only for a further fact (e.g. "Ant International is the first client.").
+2a. **Plain English.** Short active sentences (aim for under 20 words), one idea per sentence.
 3. **No jargon or filler.** Banned words include utilise, leverage, facilitate, enhance, ecosystem, stakeholders, solution, landscape, crucial, pave the way, this signals. Payments-insider shorthand (nostro, earmark, rails, plumbing) is replaced with plain words. No tacked-on endings such as ", affecting X". The full list is `HEDGE_PHRASES` / `JARGON_SUGGESTIONS` in `render.py`.
 4. **Acronyms.** Spell out less-known ones on first use (e.g. "Depository Trust & Clearing Corporation (DTCC)"); ECB, BIS, FCA, US, UK and EU are fine as they are.
 5. **Headlines.** Sentence case, at most 12 words, one specific claim about this week.
 5a. **No overclaiming.** A trial "shows" or "could reduce"; it does not "prove" or "eliminate".
 5b. **Link labels.** Short plain-English text (at most 10 words) instead of the original headline.
-5c. **Thin or off-topic items** are marked `exclude` (UK items are kept even if thin).
+5c. **Off-topic items** are marked `exclude`; **headline-only items** are marked `thin` and dropped only when they come from weak sources and are not UK or headlined in "In one minute".
 6. **British English** spelling (tokenised, programme, centre, synchronisation).
 7. Never mention internal article ids (such as a17).
 
@@ -37,13 +38,13 @@ If you change the section structure, update `render.py` and the prompts in `run_
 About 800 words, a five-minute read. Limits are enforced in `render.py` (`MAX_ONE_MINUTE`, `MAX_UK_IMPLICATIONS`, `MAX_ITEMS`, `MAX_TARGETS`, `MAX_WORDS`); a draft over the word limit is sent back to the editor to cut.
 
 ```markdown
-## In one minute                      (3 bullets)
-* **Sentence-case headline, 12 words or fewer.** One sentence on why it matters to a UK bank.
+## In one minute                      (3 bullets: the week's biggest stories, global or UK)
+* **Sentence-case headline, 12 words or fewer.** One further concrete fact (not a repeat, not commentary).
 
-## What it means for UK banks         (2-3 concrete sentences naming this week's news)
+## The UK angle                       (2-3 factual sentences; omitted in a week without UK news)
 * ...
 
-## What happened                      (at most 12 items, UK first)
+## What happened                      (at most 12 items; up to 4 UK items first, global news keeps the rest)
 
 ### UK
 * [Short plain-English label](publisher URL) *(Publisher)*: The fact, with names, numbers and dates.
@@ -54,8 +55,8 @@ About 800 words, a five-minute read. Limits are enforced in `render.py` (`MAX_ON
 ### Regulation and law
 ### New technology                   (only when there are items)
 
-## Worth watching                     (up to 3; only things not already covered above)
-* [**Name**](URL): Why to track it and what happens next.
+## Worth watching                     (up to 3 dated upcoming events, not about anything covered above)
+* [**Name**](URL): What happens next and when.
 ```
 
 The email subject is "Digital Asset Digest, <date>: <top one or two stories>".

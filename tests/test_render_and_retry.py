@@ -120,7 +120,7 @@ class TestRender(unittest.TestCase):
         self.assertTrue(md.startswith("## In one minute"))
         self.assertIn("## What happened", md)
         # No UK implications in the sample payload -> section omitted
-        self.assertNotIn("## What it means for UK banks", md)
+        self.assertNotIn("## The UK angle", md)
         # Old evergreen pain-points section is gone
         self.assertNotIn("holding things back", md)
         # The BoE item is detected as UK (even without the strategist's flag) and shown first
@@ -173,9 +173,9 @@ class TestNewStructure(unittest.TestCase):
     def test_sections_caps_uk_first_and_labels(self):
         from render import render_briefing
         md = render_briefing(StrategicAnalysis.model_validate(self.payload()))
-        one_minute = md.split("## What it means for UK banks")[0]
+        one_minute = md.split("## The UK angle")[0]
         self.assertEqual(one_minute.count("* **Point"), 3)  # capped at 3
-        uk = md.split("## What it means for UK banks")[1].split("## What happened")[0]
+        uk = md.split("## The UK angle")[1].split("## What happened")[0]
         self.assertEqual(uk.count("\n* "), 3)  # capped at 3
         happened = md.split("## What happened")[1]
         self.assertTrue(happened.lstrip().startswith("### UK"))
@@ -206,13 +206,13 @@ class TestNewStructure(unittest.TestCase):
         from render import render_briefing
         p = self.payload()
         p["new_high_signal_targets"] = [
-            {"name": "BoE consultation closes 30 January", "article_id": "a77",
+            {"name": "FCA stablecoin consultation closes 30 January", "article_id": "a77",
              "url": "https://bankofengland.co.uk/c", "rationale": "Responses due."},
             {"name": "Canton progress", "article_id": "", "url": "", "rationale": "Ongoing."},
         ]
         md = render_briefing(StrategicAnalysis.model_validate(p))
         watching = md.split("## Worth watching")[1]
-        self.assertIn("BoE consultation closes 30 January", watching)
+        self.assertIn("FCA stablecoin consultation closes 30 January", watching)
         self.assertNotIn("Canton progress", watching)
 
     def test_uk_does_not_crowd_out_global_news(self):
@@ -240,6 +240,63 @@ class TestNewStructure(unittest.TestCase):
                         details="The firm expands in Singapore.")
         self.assertFalse(is_uk(d))
         self.assertTrue(is_uk(Development(article_id="y", title="Bank of England consults", details="d")))
+
+    def test_one_minute_story_always_in_body(self):
+        from render import MAX_ITEMS, render_briefing, selected_developments
+        p = self.payload()
+        p["pillars"][0]["developments"] = (
+            [{"article_id": f"g{i}", "title": f"Global item {i}", "url": f"https://x/g{i}",
+              "details": "d", "source": "Ledger Insights"} for i in range(14)]
+            + [{"article_id": "top", "title": "JPMorgan and DBS weekend transfers", "url": "https://agg/x",
+                "details": "JPMorgan and DBS launched transfers.", "source": "CoinMarketCap", "thin": True}])
+        p["macro_view"] = [{"headline": "JPMorgan and DBS launch weekend transfers", "detail": "Ant is first.",
+                            "article_id": "top"}]
+        analysis = StrategicAnalysis.model_validate(p)
+        ids = [d.article_id for _, d in selected_developments(analysis)]
+        self.assertIn("top", ids)            # thin + weak source, but headlined -> kept
+        self.assertEqual(len(ids), MAX_ITEMS)  # and it survives the cap (listed last in input)
+        self.assertIn("JPMorgan and DBS weekend transfers", render_briefing(analysis))
+
+    def test_worth_watching_needs_date_and_no_overlap(self):
+        from render import render_briefing
+        p = self.payload()  # body includes Fnality, Monument, BoE DSS
+        p["new_high_signal_targets"] = [
+            {"name": "HKEX accepts wCBDC for margin", "article_id": "t1", "url": "https://li/hkex",
+             "rationale": "Starts in December."},
+            {"name": "Canton roadmap", "article_id": "t2", "url": "https://li/canton",
+             "rationale": "Further announcements expected."},           # no date -> dropped
+            {"name": "Monument Bank expansion", "article_id": "t3", "url": "https://li/mon",
+             "rationale": "Due in March 2027."},                         # already covered -> dropped
+        ]
+        watching = render_briefing(StrategicAnalysis.model_validate(p)).split("## Worth watching")[1]
+        self.assertIn("HKEX", watching)
+        self.assertNotIn("Canton", watching)
+        self.assertNotIn("Monument", watching)
+
+    def test_repetitive_one_minute_detected(self):
+        from render import repetitive_one_minute
+        p = self.payload()
+        p["macro_view"] = [
+            {"headline": "JPMorgan and DBS launch instant weekend transfers via tokenised deposits",
+             "detail": "J.P. Morgan and DBS offer instant weekend transfers using tokenised deposits."},
+            {"headline": "ECB platform settles first €1 billion tokenised bond",
+             "detail": "The European Stability Mechanism issued it on 2 November via Pontes."}]
+        flagged = repetitive_one_minute(StrategicAnalysis.model_validate(p))
+        self.assertEqual(len(flagged), 1)
+        self.assertTrue(flagged[0].startswith("JPMorgan"))
+
+    def test_publisher_display_cleaned(self):
+        from render import display_publisher
+        self.assertEqual(display_publisher("www.tokenpost.com"), "tokenpost.com")
+        self.assertEqual(display_publisher("https://www.genfinity.io/"), "genfinity.io")
+        self.assertEqual(display_publisher("Ledger Insights"), "Ledger Insights")
+
+    def test_advice_and_commentary_flagged(self):
+        from render import find_hedging
+        flagged = find_hedging("UK banks should note this. This shows progress. Monitor closely.")
+        for phrase in ("should", "this shows", "monitor"):
+            self.assertIn(phrase, flagged)
+        self.assertEqual(find_hedging("CCPs must ensure tokenised assets can be valued."), [])
 
     def test_item_cap(self):
         from render import MAX_ITEMS, selected_developments
@@ -283,6 +340,15 @@ class TestNewStructure(unittest.TestCase):
 
 
 class TestEditorMerge(unittest.TestCase):
+    def test_editor_can_empty_uk_angle(self):
+        payload = sample_payload()
+        payload["uk_implications"] = ["UK banks should act."]
+        original = StrategicAnalysis.model_validate(payload)
+        edited_payload = sample_payload()
+        edited_payload["uk_implications"] = []
+        merged = run_pipeline.merge_editor_prose(original, StrategicAnalysis.model_validate(edited_payload))
+        self.assertEqual(merged.uk_implications, [])
+
     def test_identity_fields_preserved(self):
         original = StrategicAnalysis.model_validate(sample_payload())
         edited_payload = sample_payload()
