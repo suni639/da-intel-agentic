@@ -215,6 +215,32 @@ class TestNewStructure(unittest.TestCase):
         self.assertIn("BoE consultation closes 30 January", watching)
         self.assertNotIn("Canton progress", watching)
 
+    def test_uk_does_not_crowd_out_global_news(self):
+        from render import MAX_ITEMS, MAX_UK_FIRST, render_briefing, selected_developments
+        p = self.payload()
+        p["pillars"][0]["developments"] = (
+            [{"article_id": f"uk{i}", "title": f"Barclays item {i}", "url": f"https://x/uk{i}",
+              "details": "UK detail.", "uk": True} for i in range(7)]
+            + [{"article_id": f"g{i}", "title": f"Global item {i}", "url": f"https://x/g{i}",
+                "details": "Global detail."} for i in range(10)])
+        analysis = StrategicAnalysis.model_validate(p)
+        chosen = selected_developments(analysis)
+        self.assertEqual(len(chosen), MAX_ITEMS)
+        self.assertEqual(sum(1 for _, d in chosen if d.uk), MAX_UK_FIRST)  # UK heading capped
+        globals_shown = sum(1 for _, d in chosen if d.title.startswith("Global"))
+        self.assertGreaterEqual(globals_shown, MAX_ITEMS - 7)  # global news keeps its slots
+        md = render_briefing(StrategicAnalysis.model_validate(p))
+        uk_block = md.split("### UK")[1].split("###")[0]
+        self.assertEqual(uk_block.count("\n* "), MAX_UK_FIRST)
+
+    def test_london_based_global_firm_not_uk(self):
+        from render import is_uk
+        from schema import Development
+        d = Development(article_id="x", title="London-based Copper raises funding for custody in Asia",
+                        details="The firm expands in Singapore.")
+        self.assertFalse(is_uk(d))
+        self.assertTrue(is_uk(Development(article_id="y", title="Bank of England consults", details="d")))
+
     def test_item_cap(self):
         from render import MAX_ITEMS, selected_developments
         p = self.payload()

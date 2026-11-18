@@ -336,6 +336,9 @@ PILLAR_TITLES = {
 MAX_ONE_MINUTE = 3
 MAX_UK_IMPLICATIONS = 3
 MAX_ITEMS = 12
+# The UK heading is a reading aid, not a quota: at most this many UK items are
+# pulled to the top, so global institutional news keeps most of the slots.
+MAX_UK_FIRST = 4
 MAX_TARGETS = 3
 TARGET_WORDS = 800
 MAX_WORDS = 950
@@ -343,7 +346,7 @@ MAX_WORDS = 950
 
 # Backstop for the strategist's "uk" flag: obvious UK signals in the title/details/source.
 _UK_PATTERNS = re.compile(
-    r"\b(UK|U\.K\.|United Kingdom|Britain|British|England|London|sterling|GBP|gilts?|"
+    r"\b(UK|U\.K\.|United Kingdom|Britain|sterling|GBP|gilts?|"
     r"Bank of England|BoE|FCA|Financial Conduct Authority|PRA|HM Treasury|Prudential Regulation Authority|"
     r"Lloyds|Barclays|NatWest|HSBC UK|Santander UK|Nationwide|Monument Bank|Standard Chartered UK|"
     r"Digital Securities Sandbox|LSEG|London Stock Exchange)\b")
@@ -377,9 +380,16 @@ def selected_developments(analysis: StrategicAnalysis):
             seen.add(dev.article_id)
             dev.uk = is_uk(dev)
             ordered.append((name, dev))
-    uk = [x for x in ordered if x[1].uk]
-    rest = [x for x in ordered if not x[1].uk]
-    return (uk + rest)[:MAX_ITEMS]
+    uk_items = [x for x in ordered if x[1].uk]
+    uk_first, uk_extra = uk_items[:MAX_UK_FIRST], uk_items[MAX_UK_FIRST:]
+    # Global items keep the strategist's significance order within pillar order;
+    # UK items beyond the cap only fill space that global news leaves free.
+    rest = [x for x in ordered if not x[1].uk] + uk_extra
+    chosen = (uk_first + rest)[:MAX_ITEMS]
+    # Items shown under a pillar heading rather than "UK" are rendered as non-UK.
+    for _, dev in rest:
+        dev.uk = False
+    return chosen
 
 
 def selected_targets(analysis: StrategicAnalysis, chosen) -> List[Target]:

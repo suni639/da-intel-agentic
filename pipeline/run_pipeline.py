@@ -252,19 +252,19 @@ Core Pillars (file each development under the ONE pillar that fits best):
 5. Frontier & Emerging Innovations: genuinely new technology with a clear digital-asset or payments use (privacy layers, interoperability protocols, agentic payments). Not market infrastructure operators, and not general AI or research tools.
 
 Audience and UK focus:
-- Readers are UK corporate and commercial bankers (e.g. Lloyds Banking Group, Barclays, HSBC, NatWest). Put the UK first: Bank of England, FCA, HM Treasury, UK banks and UK firms, UK law and UK market infrastructure.
-- Set "uk": true on any development that directly concerns the UK. Always include significant UK developments.
-- International items earn a place by what they mean for UK banks: competitor moves (US, EU and Asian banks), standards and rules UK firms must meet or will be compared with, and infrastructure UK banks connect to.
+- Readers are UK corporate and commercial bankers (e.g. Lloyds Banking Group, Barclays, HSBC, NatWest) who need the most important GLOBAL institutional digital asset news, with the UK angle made explicit.
+- Global news remains the core of the brief: in a typical week most selected developments will be international (US, EU, Asia, global standard setters). Select on significance first; never drop a significant global development to make room for a minor UK one.
+- Set "uk": true on any development that directly concerns the UK (Bank of England, FCA, HM Treasury, UK banks and firms, UK law and market infrastructure). Always include significant UK developments; UK items are shown first under their own heading.
 
 Selection discipline (this is a five-minute executive brief of about 800 words, not a news digest):
 - Select AT MOST 12 developments in total, the most significant first, with at most 4 per pillar. Fewer is better than padding.
 - Each development must be a distinct event. When several articles cover the same event, cite ONE: prefer "quality": "primary" (central banks, regulators, official press releases), then "trade" (established financial trade press), and only use "aggregator" sources when nothing better covers the event.
 - Exclude anything not about digital assets, tokenisation, stablecoins, CBDCs or DLT-based payments and settlement (e.g. general AI research, AI agents with no digital-asset element, a regulator's general innovation statistics, generic fintech, crypto prices).
-- "macro_view" must lead with the biggest stories for a UK bank, not novelty items.
+- "macro_view" must cover the week's three biggest stories (global or UK), not novelty items.
 - Keep every "details" to at most two sentences.
 
 Also write:
-- "macro_view" (shown as "In one minute"): EXACTLY 3 bullets. Each headline is one specific claim about this week (at most 12 words, sentence case); each detail is ONE short sentence on why it matters to a UK bank. Together they should let a reader skip the rest of the brief.
+- "macro_view" (shown as "In one minute"): EXACTLY 3 bullets on the week's three most significant developments, global or UK. Each headline is one specific claim about this week (at most 12 words, sentence case); each detail is ONE short sentence on why it matters to a bank. Together they should let a reader skip the rest of the brief.
 - "uk_implications" (shown as "What it means for UK banks"): 2-3 short, concrete sentences on what this week's news means for UK banks - competitive pressure, regulatory benchmarks, decisions or preparation needed. Name the developments; no generic statements that would be true any week.
 - "new_high_signal_targets" (shown as "Worth watching"): up to 3 specific upcoming events worth tracking that are NOT already among the selected developments - a consultation deadline, a launch date, a vote, a pilot phase - each tied to the article ("article_id") that reports it. No vague themes such as "progress of X" or "ongoing discussions"; leave empty rather than repeat a development or invent one.
 - "subject_hook": the week's top one or two stories in at most 10 words for the email subject (e.g. "DBS-JPMorgan 24/7 dollar link; OCC stablecoin deadline").
@@ -295,7 +295,7 @@ Voice: write like a well-edited newspaper brief for a busy senior UK banker. Pla
 2. Development "details": open with the concrete fact - who did what, with numbers, dates, currencies, counterparties or jurisdictions from the evidence. Add a second short sentence ONLY if it tells a banker something concrete; otherwise stop. Never end with a tacked-on clause such as ", affecting X" or ", enabling Y". No generic benefit claims.
 3. Development "label": the link text readers see. Write a short, plain-English label of at most 10 words in British spelling that says what happened (e.g. "DBS and JPMorgan link deposit tokens for 24/7 dollar payments"). Not the original headline, no questions, no clickbait, no publisher name.
 4. Never overclaim. Implications must be no stronger than the evidence: a trial "shows" or "could reduce", it does not "prove" or "eliminate". Say "plans to", "is consulting on" or "is testing" when that is what happened.
-5. "macro_view" ("In one minute"): 3 bullets covering the three most significant developments for a UK bank this week (include the most important UK development if there is one; never an excluded or minor item). Headline: one specific claim about this week, sentence case, at most 12 words. Detail: ONE short sentence on why it matters to a UK bank. Do not list developments; no headline may be true of any week.
+5. "macro_view" ("In one minute"): 3 bullets covering the three most significant developments this week, global or UK, ranked purely on significance (never an excluded or minor item). Headline: one specific claim about this week, sentence case, at most 12 words. Detail: ONE short sentence on why it matters to a UK bank. Do not list developments; no headline may be true of any week.
 6. "uk_implications" ("What it means for UK banks"): 2-3 short, concrete sentences naming this week's developments and what UK banks should note, decide or prepare for. No generic statements.
 7. Target rationales: one sentence on why to track it and what to watch for next (a date, decision or launch).
 8. "subject_hook": the top one or two stories in at most 10 words, no full stop.
