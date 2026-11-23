@@ -127,6 +127,14 @@ class TestFeedConfig(unittest.TestCase):
         self.assertTrue(all(f.filter in ingestion.FILTERS for f in FEEDS))
         self.assertTrue(active_feeds())
 
+    def test_google_news_queries_fit_word_limit(self):
+        # Google ignores words past the 32nd, which would drop the "when:7d" limit.
+        from urllib.parse import parse_qs, urlparse
+        for feed in FEEDS:
+            if "news.google.com" in feed.url:
+                q = parse_qs(urlparse(feed.url).query)["q"][0]
+                self.assertLessEqual(len(q.split()), 32, feed.name)
+
 
 if __name__ == "__main__":
     unittest.main()

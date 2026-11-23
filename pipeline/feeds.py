@@ -89,12 +89,11 @@ FEEDS: List[Feed] = [
                 'Fnality OR Kinexys OR "Canton Network" OR Partior OR "Regulated Liability Network" '
                 'OR "Project Agora" OR "Project Agorá"'),
     google_news("News: UK digital securities & BoE",
-                # Same flat "(who) (what)" shape as the FMI and UK-bank searches:
-                # Google News mishandles a bare OR chain or nested brackets here and
-                # returns stale results that ignore the 7-day limit.
-                '("Bank of England" OR FCA OR "HM Treasury" OR UK OR Britain) '
-                '("Digital Securities Sandbox" OR "digital gilt" OR DIGIT OR "digital pound" OR '
-                'stablecoin OR stablecoins OR tokenisation OR tokenization OR "digital securities")'),
+                # Google reads only the first 32 words of a query; past that the
+                # appended "when:7d" is dropped and stale results come back.
+                '("Bank of England" OR FCA OR "HM Treasury" OR UK) '
+                '(DIGIT OR "digital gilt" OR "digital pound" OR stablecoin OR tokenisation '
+                'OR tokenization OR "digital securities")'),
     google_news("News: Wholesale CBDC & central bank DLT",
                 '"wholesale CBDC" OR "wholesale central bank digital currency" OR '
                 '"Project Ensemble" OR "Project Guardian" OR "Pontes" ECB'),
