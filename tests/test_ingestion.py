@@ -93,6 +93,33 @@ class TestFetch(unittest.TestCase):
         self.assertIn("DA-Intel", get.call_args_list[0].kwargs["headers"]["User-Agent"])
 
 
+    def test_retries_transient_errors(self):
+        busy = MagicMock(status_code=503, content=b"")
+        ok = MagicMock(status_code=200, content=b"<rss/>")
+        sleep = MagicMock()
+        with patch("requests.get", side_effect=[busy, busy, ok]) as get:
+            status, _, agent = ingestion.fetch("https://x/feed", retry_delays=(5, 9), sleep=sleep)
+        self.assertEqual((status, agent), (200, "bot"))
+        self.assertEqual(get.call_count, 3)
+        sleep.assert_called_once_with(5)
+
+    def test_gives_up_after_retries(self):
+        busy = MagicMock(status_code=503, content=b"")
+        sleep = MagicMock()
+        with patch("requests.get", return_value=busy) as get:
+            status, content, agent = ingestion.fetch("https://x/feed", retry_delays=(5,), sleep=sleep)
+        self.assertEqual((status, content, agent), (503, b"", None))
+        self.assertEqual(get.call_count, 4)
+
+    def test_no_retry_on_permanent_error(self):
+        gone = MagicMock(status_code=404, content=b"")
+        sleep = MagicMock()
+        with patch("requests.get", return_value=gone) as get:
+            status, _, _ = ingestion.fetch("https://x/feed", sleep=sleep)
+        self.assertEqual(status, 404)
+        self.assertEqual(get.call_count, 2)
+        sleep.assert_not_called()
+
 class TestFeedConfig(unittest.TestCase):
     def test_config_is_valid(self):
         names = [f.name for f in FEEDS]
