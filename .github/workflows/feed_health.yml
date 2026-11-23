@@ -2,8 +2,9 @@ name: Feed health check
 
 on:
   # Runs before the Monday pipeline; fails (and notifies) if an active feed breaks.
+  # Sunday 19:17 UTC: off the hour, where GitHub's schedule delays are shorter.
   schedule:
-    - cron: '0 20 * * 0'
+    - cron: '17 19 * * 0'
   # Re-check whenever the feed configuration changes.
   push:
     paths:
