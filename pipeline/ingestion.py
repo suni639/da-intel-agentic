@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import time
 from functools import lru_cache
 from urllib.parse import urljoin, urlparse
 
@@ -41,8 +42,13 @@ def log(msg):
     print(f"[ingestion] {msg}", file=sys.stderr)
 
 
-def fetch(url, timeout=15):
-    """GET a feed. Returns (status_code, content_bytes, agent_label)."""
+# Statuses that usually clear within seconds (rate limits, overloaded servers).
+# Google News answers 503 when it briefly throttles a runner's IP address.
+TRANSIENT_STATUS = {429, 500, 502, 503, 504}
+RETRY_DELAYS = (10, 30)  # seconds to wait before each retry
+
+
+def _fetch_once(url, timeout):
     last_status, last_exc = None, None
     for label, agent in (("bot", BOT_USER_AGENT), ("browser", BROWSER_USER_AGENT)):
         try:
@@ -55,10 +61,27 @@ def fetch(url, timeout=15):
             continue
         last_status = r.status_code
         if r.status_code == 200 and r.content.strip():
-            return r.status_code, r.content, label
-    if last_status is None and last_exc is not None:
-        raise last_exc
-    return last_status, b"", None
+            return r.status_code, r.content, label, None
+    return last_status, b"", None, last_exc
+
+
+def fetch(url, timeout=15, retry_delays=RETRY_DELAYS, sleep=time.sleep):
+    """GET a feed. Returns (status_code, content_bytes, agent_label).
+
+    Tries a polite bot agent, then a browser agent. If both get a transient
+    error (429/5xx), waits and tries again, up to len(retry_delays) times.
+    """
+    for attempt in range(len(retry_delays) + 1):
+        status, content, label, exc = _fetch_once(url, timeout)
+        if status == 200 and label:
+            return status, content, label
+        if status not in TRANSIENT_STATUS or attempt == len(retry_delays):
+            break
+        log(f"HTTP {status} from {urlparse(url).netloc}; retrying in {retry_delays[attempt]}s")
+        sleep(retry_delays[attempt])
+    if status is None and exc is not None:
+        raise exc
+    return status, b"", None
 
 
 @lru_cache(maxsize=None)
