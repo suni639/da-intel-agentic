@@ -89,12 +89,12 @@ FEEDS: List[Feed] = [
                 'Fnality OR Kinexys OR "Canton Network" OR Partior OR "Regulated Liability Network" '
                 'OR "Project Agora" OR "Project Agorá"'),
     google_news("News: UK digital securities & BoE",
-                # Brackets matter: Google binds OR tighter than the implicit AND,
-                # so the unbracketed form matched almost nothing.
-                '"Digital Securities Sandbox" OR "digital gilt" OR "DIGIT gilt" OR "digital pound" OR '
+                # Brackets matter: Google binds OR tighter than the implicit AND, and
+                # the outer brackets keep the appended "when:7d" applying to every term.
+                '("Digital Securities Sandbox" OR "digital gilt" OR "DIGIT gilt" OR "digital pound" OR '
                 '(("Bank of England" OR FCA OR "HM Treasury") '
                 '(stablecoin OR stablecoins OR tokenisation OR tokenization OR "digital securities" '
-                'OR "digital assets" OR DLT OR "wholesale settlement"))'),
+                'OR "digital assets" OR DLT OR "wholesale settlement")))'),
     google_news("News: Wholesale CBDC & central bank DLT",
                 '"wholesale CBDC" OR "wholesale central bank digital currency" OR '
                 '"Project Ensemble" OR "Project Guardian" OR "Pontes" ECB'),
