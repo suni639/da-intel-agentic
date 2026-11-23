@@ -2,8 +2,9 @@ name: Digital Asset Intelligence Engine Scheduled Run
 
 on:
   schedule:
-    # Run every Monday at 02:00 UTC (03:00 AM UK time during BST, 02:00 AM UK time during GMT)
-    - cron: '0 2 * * 1'
+    # Every Monday at 01:47 UTC (01:47 UK time in GMT, 02:47 in BST). Off the hour
+    # because GitHub delays on-the-hour schedules most; runs still start late.
+    - cron: '47 1 * * 1'
   workflow_dispatch:
     # Allows manual execution from the GitHub Actions UI
     inputs:
