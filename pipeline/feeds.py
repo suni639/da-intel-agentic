@@ -55,7 +55,7 @@ INSTITUTIONAL_KEYWORDS = [
     "mica", "genius act", "clarity act", "fca", "bank of england", "ecb", "federal reserve",
     "sec", "cftc", "occ", "mas", "hkma", "esma", "eba", "bis", "fsb", "iosco",
     "swift", "dtcc", "euroclear", "clearstream", "fnality", "kinexys", "canton", "partior",
-    "agora", "rln", "regulated liability network", "dss", "digital securities sandbox",
+    "agora", "rln", "regulated liability network", "dss", "digital securities sandbox", "digital pound", "digital gilt",
     "blackrock", "buidl", "franklin templeton", "jpmorgan", "j.p. morgan", "citi", "hsbc",
     "barclays", "lloyds", "natwest", "standard chartered", "goldman", "bny", "state street",
     "circle", "usdc", "ripple", "rlusd", "paxos", "coinbase institutional", "anchorage",
@@ -89,8 +89,11 @@ FEEDS: List[Feed] = [
                 'Fnality OR Kinexys OR "Canton Network" OR Partior OR "Regulated Liability Network" '
                 'OR "Project Agora" OR "Project Agorá"'),
     google_news("News: UK digital securities & BoE",
-                '"Digital Securities Sandbox" OR "digital gilt" OR DIGIT gilt OR '
-                '"Bank of England" stablecoin OR "Bank of England" tokenisation'),
+                # Google reads only the first 32 words of a query; past that the
+                # appended "when:7d" is dropped and stale results come back.
+                '("Bank of England" OR FCA OR "HM Treasury" OR UK) '
+                '(DIGIT OR "digital gilt" OR "digital pound" OR stablecoin OR tokenisation '
+                'OR tokenization OR "digital securities")'),
     google_news("News: Wholesale CBDC & central bank DLT",
                 '"wholesale CBDC" OR "wholesale central bank digital currency" OR '
                 '"Project Ensemble" OR "Project Guardian" OR "Pontes" ECB'),
